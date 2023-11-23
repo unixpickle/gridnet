@@ -9,7 +9,8 @@ def outer_step_pytorch(
     bias: torch.Tensor,
     init_activations: torch.Tensor,
     inner_iterations: int,
-    block_size: int = 8,
+    block_size: int,
+    eps: float = 1e-5,
 ) -> torch.Tensor:
     """
     Apply a forward pass of the model on an activations Tensor
@@ -36,26 +37,24 @@ def outer_step_pytorch(
     :param block_size: the size of independent blocks which are updated
                        recurrently for multiple iterations. Normalization is
                        also applied only within each block.
+    :param eps: a small value to avoid division by zero.
     """
-    m, n, k, channels = weight.shape
-    assert channels == (3**3) - 1
-    m1, n1, k1 = bias.shape
-    assert (m, n, k) == (
-        m1,
-        n1,
-        k1,
-    ), f"inconsistent weight and bias shapes: {weight.shape=} {bias.shape=}"
+    assert weight.shape == (
+        block_size,
+        block_size,
+        block_size,
+        3**3,
+    ), f"{weight.shape=} invalid for {block_size=}"
+    assert bias.shape == weight.shape[:-1], f"{bias.shape=} invalid for {block_size=}"
     batch_size, m_padded, n_padded, k_padded = init_activations.shape
-    assert (m_padded, n_padded, k_padded) == (
-        m + 2,
-        n + 2,
-        k + 2,
-    ), f"inconsistent weight and activation shapes: {weight.shape=} {init_activations.shape=}"
+    m = m_padded - 2
+    n = n_padded - 2
+    k = k_padded - 2
     assert (
         m % block_size == 0 and n % block_size == 0 and k % block_size == 0
-    ), f"{block_size=} incompatible with {weight.shape=}"
+    ), f"{block_size=} incompatible with {init_activations.shape=}"
 
-    block_fn = inner_step_fn(block_size, weight, bias)
+    block_fn = inner_step_fn(block_size, weight, bias, eps)
     output_blocks = []
     for a in range(1, m + 1, block_size):
         for b in range(1, n + 1, block_size):
@@ -70,24 +69,27 @@ def outer_step_pytorch(
                 for _ in range(inner_iterations):
                     block_out = block_fn(block_out)
                 output_blocks.append(block_out[:, 1:-1, 1:-1, 1:-1])
-    return (
+    unpadded_out = (
         torch.stack(output_blocks)
         .reshape(
-            batch_size,
             m // block_size,
             n // block_size,
             k // block_size,
+            batch_size,
             block_size,
             block_size,
             block_size,
         )
-        .permute(0, 1, 4, 2, 5, 3, 6)
+        .permute(3, 0, 4, 1, 5, 2, 6)
         .reshape(batch_size, m, n, k)
     )
+    results = init_activations.clone()
+    results[:, 1:-1, 1:-1, 1:-1] = unpadded_out
+    return results
 
 
 def inner_step_fn(
-    block_size: int, weight: torch.Tensor, bias: torch.Tensor, eps: float = 1e-5
+    block_size: int, weight: torch.Tensor, bias: torch.Tensor, eps: float
 ) -> Callable[[torch.Tensor], torch.Tensor]:
     # Extract neighborhoods from a (block_size + 2) ^ 3 tensor.
     def index_in_block(i: int, j: int, k: int) -> int:
@@ -105,19 +107,12 @@ def inner_step_fn(
                 indices.extend(cell_indices)
     input_index_tensor = torch.tensor(indices, device=weight.device, dtype=torch.long)
 
-    # Create a mask of just the outer shell of values so that we can
-    # preserve these across repeated function calls.
-    outer_mask = torch.ones(
-        (block_size + 2,) * 3, device=weight.device, dtype=weight.dtype
-    )
-    outer_mask[1:-1, 1:-1, 1:-1] = 0
-
     def inner_fn(activations: torch.Tensor) -> torch.Tensor:
         batch_size = activations.shape[0]
-        flattened = activations.flatten(1)  # [batch_size x batch_size^3]
-        mean = activations.mean(1, keepdim=True)
-        std = activations.std(1, keepdim=True)
-        inputs = (flattened - mean) / std
+        flattened = activations.flatten(1)  # [batch_size x block_size^3]
+        mean = flattened.mean(1, keepdim=True)
+        std = flattened.std(1, keepdim=True)
+        inputs = (flattened - mean) / (std + eps)
         patches = inputs.gather(
             1, input_index_tensor[None].repeat(batch_size, 1)
         ).reshape(
@@ -127,6 +122,6 @@ def inner_step_fn(
         results = F.silu(results)
         results = results.reshape(-1, block_size, block_size, block_size)
         results = F.pad(results, (1, 1, 1, 1, 1, 1))
-        return results + outer_mask * activations
+        return results + activations
 
     return inner_fn
