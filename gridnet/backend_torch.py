@@ -22,9 +22,8 @@ def outer_step_pytorch(
                    one.
     :param bias: an [M x N x K] bias matrix, which is combined with weights
                  during each recurrent iteration.
-    :param init_activations: the input [B x M + 2 x N + 2 x K + 2] activation
-                             grid, where the outer shell of the grid is
-                             treated as input constants.
+    :param init_activations: the input [B x M x N  x K] activation
+                             grid.
     :param inner_iterations: the number of recurrent iterations to run for
                              each [block_size x block_size x block_size]
                              sub-grid of the full grid before syncing values
@@ -46,20 +45,18 @@ def outer_step_pytorch(
         3**3,
     ), f"{weight.shape=} invalid for {block_size=}"
     assert bias.shape == weight.shape[:-1], f"{bias.shape=} invalid for {block_size=}"
-    batch_size, m_padded, n_padded, k_padded = init_activations.shape
-    m = m_padded - 2
-    n = n_padded - 2
-    k = k_padded - 2
+    batch_size, m, n, k = init_activations.shape
     assert (
         m % block_size == 0 and n % block_size == 0 and k % block_size == 0
     ), f"{block_size=} incompatible with {init_activations.shape=}"
 
     block_fn = inner_step_fn(block_size, weight, bias, eps)
     output_blocks = []
+    padded_init_acts = F.pad(init_activations, (1,) * 6)
     for a in range(1, m + 1, block_size):
         for b in range(1, n + 1, block_size):
             for c in range(1, k + 1, block_size):
-                block_in = init_activations[
+                block_in = padded_init_acts[
                     :,
                     a - 1 : a + 1 + block_size,
                     b - 1 : b + 1 + block_size,
@@ -69,7 +66,7 @@ def outer_step_pytorch(
                 for _ in range(inner_iterations):
                     block_out = block_fn(block_out)
                 output_blocks.append(block_out[:, 1:-1, 1:-1, 1:-1])
-    unpadded_out = (
+    return (
         torch.stack(output_blocks)
         .reshape(
             m // block_size,
@@ -83,9 +80,6 @@ def outer_step_pytorch(
         .permute(3, 0, 4, 1, 5, 2, 6)
         .reshape(batch_size, m, n, k)
     )
-    results = init_activations.clone()
-    results[:, 1:-1, 1:-1, 1:-1] = unpadded_out
-    return results
 
 
 def inner_step_fn(
