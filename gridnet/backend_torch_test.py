@@ -19,7 +19,7 @@ def test_outer_step_zero_iters(shape: Tuple[int, int, int], block_size: int):
         2,
         *shape,
     )
-    weights = torch.randn(block_size, block_size, block_size, 3**3)
+    weights = torch.randn(3**3, block_size, block_size, block_size)
     biases = torch.randn(block_size, block_size, block_size)
     outputs = outer_step_pytorch(weights, biases, inputs, 0, block_size=block_size)
     assert torch.allclose(outputs, inputs)
@@ -37,7 +37,7 @@ def test_outer_step_zero_weights(shape: Tuple[int, int, int], block_size: int):
         2,
         *shape,
     )
-    weights = torch.zeros(block_size, block_size, block_size, 3**3)
+    weights = torch.zeros(3**3, block_size, block_size, block_size)
     biases = torch.zeros(block_size, block_size, block_size)
     outputs = outer_step_pytorch(weights, biases, inputs, 10, block_size=block_size)
     padded = F.pad(inputs, (1,) * 6)

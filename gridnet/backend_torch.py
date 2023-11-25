@@ -16,14 +16,12 @@ def outer_step_pytorch(
     Apply a forward pass of the model on an activations Tensor
     to produce a new activations Tensor.
 
-    :param weight: an [M x N x K x 3^3] weight tensor. A given entry in the
-                   grid is updated by taking a dot product of weights[i, j, k]
-                   with all the (normalized) neighboring values to the current
-                   one.
+    :param weight: a [3^3 x M x N x K] weight tensor. A given entry in the grid
+                   is updated by taking a dot product of weights[:, i, j, k]
+                   with the (blockwise normalized) neighboring 3x3 grid.
     :param bias: an [M x N x K] bias matrix, which is combined with weights
                  during each recurrent iteration.
-    :param init_activations: the input [B x M x N  x K] activation
-                             grid.
+    :param init_activations: the input [B x M x N  x K] activation grid.
     :param inner_iterations: the number of recurrent iterations to run for
                              each [block_size x block_size x block_size]
                              sub-grid of the full grid before syncing values
@@ -39,12 +37,12 @@ def outer_step_pytorch(
     :param eps: a small value to avoid division by zero.
     """
     assert weight.shape == (
-        block_size,
-        block_size,
-        block_size,
         3**3,
+        block_size,
+        block_size,
+        block_size,
     ), f"{weight.shape=} invalid for {block_size=}"
-    assert bias.shape == weight.shape[:-1], f"{bias.shape=} invalid for {block_size=}"
+    assert bias.shape == weight.shape[1:], f"{bias.shape=} invalid for {block_size=}"
     batch_size, m, n, k = init_activations.shape
     assert (
         m % block_size == 0 and n % block_size == 0 and k % block_size == 0
@@ -105,14 +103,14 @@ def inner_step_fn(
         batch_size = activations.shape[0]
         flattened = activations.flatten(1)  # [batch_size x block_size^3]
         mean = flattened.mean(1, keepdim=True)
-        std = flattened.std(1, keepdim=True)
+        std = flattened.std(1, correction=0, keepdim=True)
         inputs = (flattened - mean) / (std + eps)
         patches = inputs.gather(
             1, input_index_tensor[None].repeat(batch_size, 1)
         ).reshape(
             batch_size, block_size**3, 3**3
         )  # [batch_size x block_size^3 x 3^3]
-        results = (patches * weight.reshape(-1, 3**3)).sum(-1) + bias.flatten()
+        results = (patches * weight.flatten(1).t()).sum(-1) + bias.flatten()
         results = F.silu(results)
         results = results.reshape(-1, block_size, block_size, block_size)
         results = F.pad(results, (1, 1, 1, 1, 1, 1))
