@@ -21,7 +21,7 @@ def outer_step_pytorch(
                    with the (blockwise normalized) neighboring 3x3 grid.
     :param bias: an [M x N x K] bias matrix, which is combined with weights
                  during each recurrent iteration.
-    :param init_activations: the input [B x M x N  x K] activation grid.
+    :param init_activations: the input [B x M x N x K] activation grid.
     :param inner_iterations: the number of recurrent iterations to run for
                              each [block_size x block_size x block_size]
                              sub-grid of the full grid before syncing values

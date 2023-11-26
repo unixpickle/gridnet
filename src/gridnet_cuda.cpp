@@ -9,53 +9,36 @@
     CHECK_CUDA(x);     \
     CHECK_CONTIGUOUS(x)
 
-void gridnet_cuda_forward_kernel(
-    torch::Tensor weight,
-    torch::Tensor bias,
-    torch::Tensor initActivations,
-    torch::Tensor outActivations,
-    uint innerIterations,
-    uint m,
-    uint n,
-    uint k,
-    float eps);
-
 void gridnet_cuda_forward(
     torch::Tensor weight,
     torch::Tensor bias,
     torch::Tensor initActivations,
     torch::Tensor outActivations,
     uint innerIterations,
+    uint blockSize,
+    float eps);
+
+void gridnet_forward(
+    torch::Tensor weight,
+    torch::Tensor bias,
+    torch::Tensor initActivations,
+    torch::Tensor outActivations,
+    uint innerIterations,
+    uint blockSize,
     float eps)
 {
     CHECK_INPUT(weight);
     CHECK_INPUT(bias);
     CHECK_INPUT(initActivations);
     CHECK_INPUT(outActivations);
-    // TODO: check shapes.
-    const int blockSize = weight.size(1);
-    const int batchSize = initActivations.size(0);
-    const int m = initActivations.size(1);
-    const int n = initActivations.size(2);
-    const int k = initActivations.size(3);
-
-    const int threads = blockSize * blockSize * blockSize;
-    const dim3 blocks(batchSize, (m / blockSize) * (n / blockSize) * (k / blockSize));
-    AT_DISPATCH_FLOATING_TYPES(
-        weight.type(),
-        "gridnet_cuda_forward",
-        ([&] {
-            gridnet_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
-                weight.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>(),
-                bias.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
-                initActivations.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>(),
-                outActivations.packed_accessor32<scalar_t, 4, torch::RestrictPtrTraits>(),
-                innerIterations,
-                m,
-                n,
-                k,
-                eps);
-        }));
+    gridnet_cuda_forward(
+        weight,
+        bias,
+        initActivations,
+        outActivations,
+        innerIterations,
+        blockSize,
+        eps);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
