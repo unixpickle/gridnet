@@ -36,19 +36,17 @@ def outer_step_pytorch(
                        also applied only within each block.
     :param eps: a small value to avoid division by zero.
     """
-    assert weight.shape == (
-        3**3,
-        block_size,
-        block_size,
-        block_size,
-    ), f"{weight.shape=} invalid for {block_size=}"
-    assert bias.shape == weight.shape[1:], f"{bias.shape=} invalid for {block_size=}"
     batch_size, m, n, k = init_activations.shape
     assert (
         m % block_size == 0 and n % block_size == 0 and k % block_size == 0
     ), f"{block_size=} incompatible with {init_activations.shape=}"
+    assert weight.shape == (
+        3**3,
+        *init_activations.shape[1:],
+    ), f"{weight.shape=} invalid for {init_activations.shape=}"
+    assert bias.shape == weight.shape[1:], f"{bias.shape=} invalid for {weight.shape=}"
 
-    block_fn = inner_step_fn(block_size, weight, bias, eps)
+    block_fn = inner_step_fn(block_size, eps, weight.device)
     output_blocks = []
     padded_init_acts = F.pad(init_activations, (1,) * 6)
     for a in range(1, m + 1, block_size):
@@ -60,9 +58,20 @@ def outer_step_pytorch(
                     b - 1 : b + 1 + block_size,
                     c - 1 : c + 1 + block_size,
                 ]
+                weight_in = weight[
+                    :,
+                    a - 1 : a - 1 + block_size,
+                    b - 1 : b - 1 + block_size,
+                    c - 1 : c - 1 + block_size,
+                ]
+                bias_in = bias[
+                    a - 1 : a - 1 + block_size,
+                    b - 1 : b - 1 + block_size,
+                    c - 1 : c - 1 + block_size,
+                ]
                 block_out = block_in
                 for _ in range(inner_iterations):
-                    block_out = block_fn(block_out)
+                    block_out = block_fn(block_out, weight_in, bias_in)
                 output_blocks.append(block_out[:, 1:-1, 1:-1, 1:-1])
     return (
         torch.stack(output_blocks)
@@ -81,8 +90,8 @@ def outer_step_pytorch(
 
 
 def inner_step_fn(
-    block_size: int, weight: torch.Tensor, bias: torch.Tensor, eps: float
-) -> Callable[[torch.Tensor], torch.Tensor]:
+    block_size: int, eps: float, device: torch.device
+) -> Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
     # Extract neighborhoods from a (block_size + 2) ^ 3 tensor.
     def index_in_block(i: int, j: int, k: int) -> int:
         return k + (block_size + 2) * (j + (block_size + 2) * i)
@@ -97,19 +106,19 @@ def inner_step_fn(
                         for c in range(3):
                             cell_indices.append(index_in_block(i + a, j + b, k + c))
                 indices.extend(cell_indices)
-    input_index_tensor = torch.tensor(indices, device=weight.device, dtype=torch.long)
+    input_index_tensor = torch.tensor(indices, device=device, dtype=torch.long)
 
-    def inner_fn(activations: torch.Tensor) -> torch.Tensor:
+    def inner_fn(
+        activations: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor
+    ) -> torch.Tensor:
         batch_size = activations.shape[0]
-        flattened = activations.flatten(1)  # [batch_size x block_size^3]
+        flattened = activations.flatten(1)  # [batch_size x (block_size + 2)^3]
         mean = flattened.mean(1, keepdim=True)
         std = flattened.std(1, correction=0, keepdim=True)
         inputs = (flattened - mean) / (std + eps)
         patches = inputs.gather(
             1, input_index_tensor[None].repeat(batch_size, 1)
-        ).reshape(
-            batch_size, block_size**3, 3**3
-        )  # [batch_size x block_size^3 x 3^3]
+        ).reshape(batch_size, block_size**3, 3**3)
         results = (patches * weight.flatten(1).t()).sum(-1) + bias.flatten()
         results = F.silu(results)
         results = results.reshape(-1, block_size, block_size, block_size)

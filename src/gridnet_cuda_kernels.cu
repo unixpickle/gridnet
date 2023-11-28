@@ -4,42 +4,63 @@
 
 template <typename scalar_t>
 __device__ __forceinline__ scalar_t reduce_mean(
-    scalar_t myValue,
+    scalar_t *inputBuf,
     scalar_t *aggBuf,
+    bool square,
+    uint numInputs,
     uint threadOffset,
     uint numThreads)
 {
-    __syncthreads(); // Don't overwrite aggBuf before other calls are done.
-    for (uint i = numThreads; i < 1024; i += numThreads) {
+    // Don't overwrite aggBuf before other calls are done.
+    __syncthreads();
+
+    scalar_t localSum = 0.0;
+    for (uint i = 0; i < 1024; i += numThreads) {
         uint offset = i + threadOffset;
+        scalar_t inVal = 0.0;
+        if (offset < numInputs) {
+            inVal = inputBuf[offset];
+        }
+        if (square) {
+            inVal *= inVal;
+        }
+        localSum += inVal;
         if (offset < 1024) {
-            aggBuf[offset] = 0;
+            aggBuf[offset] = 0.0;
         }
     }
-    aggBuf[threadOffset] = myValue;
-    for (uint j = 0; j < 1024; j *= 2) {
+    __syncthreads();
+    aggBuf[threadOffset] = localSum;
+
+    for (uint j = 1; j < numInputs; j *= 2) {
         __syncthreads();
         uint otherIndex = threadOffset ^ j;
         scalar_t otherValue = aggBuf[otherIndex];
-        myValue = myValue + otherValue;
+        localSum = localSum + otherValue;
         __syncthreads();
         if (otherIndex >= numThreads) {
             // No other thread is going to set this value.
-            aggBuf[otherIndex] = myValue;
+            aggBuf[otherIndex] = localSum;
         }
-        aggBuf[threadOffset] = myValue;
+        aggBuf[threadOffset] = localSum;
     }
     __syncthreads();
     // Introduce determinism by broadcasting from cell 0.
-    return aggBuf[0] / (scalar_t)numThreads;
+    return aggBuf[0] / (scalar_t)numInputs;
 }
 
 template <typename scalar_t>
 __device__ __forceinline__ scalar_t
 silu(scalar_t x)
 {
-    float ex = expf((float)x);
-    scalar_t sig = (scalar_t)(ex / (1.0 + ex));
+    scalar_t sig;
+    if (x > 0) {
+        float ex = expf(-(float)x);
+        sig = (scalar_t)(1.0 - (ex / (1.0 + ex)));
+    } else {
+        float ex = expf((float)x);
+        sig = (scalar_t)(ex / (1.0 + ex));
+    }
     return sig * x;
 }
 
@@ -55,19 +76,20 @@ __global__ void gridnet_cuda_forward_kernel(
     uint n,
     uint k)
 {
-    // Contains the following:
-    //  - activations: a tensor of size (blockSize + 2) ^ 3
-    //  - aggBuf: a tensor of size blockSize ^ 3
+    // A tensor of size (blockSize + 2) ^ 3
+    // Used for storing the current padded input activations.
     __shared__ scalar_t activations[(8 + 2) * (8 + 2) * (8 + 2)];
-    __shared__ scalar_t aggBuf[8 * 8 * 8];
+
+    // Temporary buffer used for hypercube sum reductions.
+    __shared__ scalar_t aggBuf[1024];
 
     uint blockSize = blockDim.x;   // side-length of each block
     uint batchIdx = blockIdx.x;    // the index within the batch of this block
     uint actBlockIdx = blockIdx.y; // the index of this block within the activation grid
-    uint blockX = actBlockIdx % k;
-    uint blockY = (actBlockIdx / k) % n;
-    uint blockZ = (actBlockIdx / k) / n;
-    uint numThreads = threadIdx.x * threadIdx.y * threadIdx.z;
+    uint blockX = actBlockIdx % (k / blockSize);
+    uint blockY = (actBlockIdx / (k / blockSize)) % (n / blockSize);
+    uint blockZ = (actBlockIdx / (k / blockSize)) / (n / blockSize);
+    uint numThreads = blockDim.x * blockDim.y * blockDim.z;
     uint threadOffset = threadIdx.x + threadIdx.y * blockSize + threadIdx.z * blockSize * blockSize;
 
     // The weights should be loaded directly into registers.
@@ -81,14 +103,16 @@ __global__ void gridnet_cuda_forward_kernel(
     uint activationsSize = (blockSize + 2) * (blockSize + 2) * (blockSize + 2);
     for (uint i = 0; i < activationsSize; i += numThreads) {
         uint offset = threadOffset + i;
-        uint globalX = (offset % (blockSize + 2)) + blockX;
-        uint globalY = (offset / (blockSize + 2)) % (blockSize + 2) + blockY;
-        uint globalZ = (offset / (blockSize + 2)) / (blockSize + 2) + blockZ;
+        uint globalX = (offset % (blockSize + 2)) + blockX * blockSize;
+        uint globalY = (offset / (blockSize + 2)) % (blockSize + 2) + blockY * blockSize;
+        uint globalZ = (offset / (blockSize + 2)) / (blockSize + 2) + blockZ * blockSize;
+        scalar_t loadedValue = 0.0;
         if (globalX > 0 && globalY > 0 && globalZ > 0 &&
-            blockX <= k && blockY <= n && blockZ <= m) {
-            activations[offset] = initActivations[batchIdx][globalZ - 1][globalY - 1][globalX - 1];
-        } else {
-            activations[offset] = 0.0;
+            globalX <= k && globalY <= n && globalZ <= m) {
+            loadedValue = initActivations[batchIdx][globalZ - 1][globalY - 1][globalX - 1];
+        }
+        if (offset < activationsSize) {
+            activations[offset] = loadedValue;
         }
     }
 
@@ -100,8 +124,10 @@ __global__ void gridnet_cuda_forward_kernel(
 
         // Communicate per-block normalization.
         scalar_t localAct = activations[paddedOffset];
-        scalar_t mean = reduce_mean(localAct, aggBuf, threadOffset, numThreads);
-        scalar_t sqMean = reduce_mean(localAct * localAct, aggBuf, threadOffset, numThreads);
+        scalar_t mean = reduce_mean(
+            activations, aggBuf, false, activationsSize, threadOffset, numThreads);
+        scalar_t sqMean = reduce_mean(
+            activations, aggBuf, true, activationsSize, threadOffset, numThreads);
         scalar_t std = (scalar_t)sqrtf(fmaxf((float)(sqMean - mean * mean), 0.0));
 
         // Compute dot product.
@@ -120,8 +146,9 @@ __global__ void gridnet_cuda_forward_kernel(
         // Activation and residual connection.
         scalar_t output = silu(dot) + localAct;
 
-        // Write the output back immediately, since all other threads are done
-        // reading activations (due to mean reduces).
+        // Don't overwrite activations while dot products are
+        // still being computed.
+        __syncthreads();
         activations[paddedOffset] = output;
     }
     __syncthreads();
