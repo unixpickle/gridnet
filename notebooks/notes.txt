@@ -1,0 +1,37 @@
+mean(x) = sum(x)/count
+std(x) = sum(x^2)/count - mean*mean
+n = (x - mean) / (std + eps)
+h = b + sum_i(w_i * n_i) = b + dot(w, n)
+y(x) = silu(h) + x
+
+We have dL/dy want d/dx y(x), d/db y(x), d/dw y(x)
+
+  d/dx silu(x)
+= d/dx x*sigmoid(x)
+= sigmoid(x) + x*sigmoid'(x)
+= sigmoid(x) + x*sigmoid(x)*(1-sigmoid(x))
+= sigmoid(x) * (1 + x*(1-sigmoid(x)))
+= silu'(x)
+
+Bias grad:
+
+dy/db = silu'(h) * dh/db
+      = silu'(h) * 1
+
+Weight grad:
+
+dy/dw_i = silu'(h) * dh/dw_i
+        = silu'(h) * n_i
+
+Input grad:
+
+dy/dx_i = silu'(h) * dh/dx_i
+        = silu'(h) * sum_j (w_j * dn_j/dx_i)
+
+  dn_j / dx_i
+= d/dx_i [(x_j - mean) / (std + eps)]
+=   d/dx_i [ x_j - mean ] / (std + eps)
+  - (x_j - mean)/(std+eps)^2 * d/dx_i [ std + eps ]
+
+
+d/dx_i (x_i - mean) = 1 - (1/N)
