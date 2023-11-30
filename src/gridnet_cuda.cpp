@@ -18,6 +18,18 @@ void gridnet_cuda_forward(
     uint blockSize,
     float eps);
 
+void gridnet_cuda_backward(
+    torch::Tensor weight,
+    torch::Tensor bias,
+    torch::Tensor initActivations,
+    torch::Tensor outGrads,
+    torch::Tensor weightGradOut,
+    torch::Tensor biasGradOut,
+    torch::Tensor activationsGradOut,
+    uint innerIterations,
+    uint blockSize,
+    float eps);
+
 void gridnet_forward(
     torch::Tensor weight,
     torch::Tensor bias,
@@ -41,7 +53,40 @@ void gridnet_forward(
         eps);
 }
 
+void gridnet_backward(
+    torch::Tensor weight,
+    torch::Tensor bias,
+    torch::Tensor initActivations,
+    torch::Tensor outGrads,
+    torch::Tensor weightGradOut,
+    torch::Tensor biasGradOut,
+    torch::Tensor activationsGradOut,
+    uint innerIterations,
+    uint blockSize,
+    float eps)
+{
+    CHECK_INPUT(weight);
+    CHECK_INPUT(bias);
+    CHECK_INPUT(initActivations);
+    CHECK_INPUT(outGrads);
+    CHECK_INPUT(weightGradOut);
+    CHECK_INPUT(biasGradOut);
+    CHECK_INPUT(activationsGradOut);
+    gridnet_cuda_backward(
+        weight,
+        bias,
+        initActivations,
+        outGrads,
+        weightGradOut,
+        biasGradOut,
+        activationsGradOut,
+        innerIterations,
+        blockSize,
+        eps);
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("forward", &gridnet_cuda_forward, "Gridnet forward (CUDA)");
+    m.def("forward", &gridnet_forward, "Gridnet forward (CUDA)");
+    m.def("backward", &gridnet_backward, "Gridnet backward (CUDA)");
 }
