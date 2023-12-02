@@ -56,3 +56,36 @@ def test_grad_equivalence(
     ):
         err = (x - a).abs().max().item()
         assert err < 1e-4, f"MAE in {name}: {err} ({x=} {a=})"
+
+
+def test_forward_benchmark(benchmark):
+    from gridnet.backend_cuda import GridnetCudaOp
+
+    shape = (32, 32, 32)
+    inputs = torch.randn(2, *shape).cuda()
+    weights = torch.randn(3**3, *shape).cuda()
+    biases = torch.randn(*shape).cuda()
+    torch.cuda.synchronize()
+
+    def fn():
+        GridnetCudaOp.apply(weights, biases, inputs, 10, 8, 1e-5)
+        torch.cuda.synchronize()
+
+    benchmark(fn)
+
+
+def test_backward_benchmark(benchmark):
+    from gridnet.backend_cuda import GridnetCudaOp
+
+    shape = (32, 32, 32)
+    inputs = torch.randn(2, *shape).cuda().requires_grad_(True)
+    weights = torch.randn(3**3, *shape).cuda().requires_grad_(True)
+    biases = torch.randn(*shape).cuda().requires_grad_(True)
+    out_grad = torch.randn_like(inputs)
+
+    def fn():
+        out = GridnetCudaOp.apply(weights, biases, inputs, 10, 8, 1e-5)
+        _grads = torch.autograd.grad(out, (inputs, weights, biases), out_grad)
+        torch.cuda.synchronize()
+
+    benchmark(fn)

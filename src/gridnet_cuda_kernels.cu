@@ -97,7 +97,7 @@ silu_grad(scalar_t x)
 }
 
 template <typename scalar_t>
-__global__ void gridnet_cuda_forward_kernel(
+__global__ void __launch_bounds__(512, 1) gridnet_cuda_forward_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 4> weight,
     const torch::PackedTensorAccessor32<scalar_t, 3> bias,
     const torch::PackedTensorAccessor32<scalar_t, 4> initActivations,
@@ -251,7 +251,7 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
         }
         if (offset < activationsSize) {
             activations[offset] = loadedValue;
-	    activationsGradAcc[offset] = 0;
+            activationsGradAcc[offset] = 0;
         }
     }
 

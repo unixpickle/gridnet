@@ -49,3 +49,32 @@ def test_outer_step_zero_weights(shape: Tuple[int, int, int], block_size: int):
                         ]
                     )
     assert torch.allclose(outputs, padded[:, 1:-1, 1:-1, 1:-1])
+
+
+def test_forward_benchmark(benchmark):
+    shape = (32, 32, 32)
+    inputs = torch.randn(2, *shape).cuda()
+    weights = torch.randn(3**3, *shape).cuda()
+    biases = torch.randn(*shape).cuda()
+    torch.cuda.synchronize()
+
+    def fn():
+        outer_step_pytorch(weights, biases, inputs, 10, block_size=8)
+        torch.cuda.synchronize()
+
+    benchmark(fn)
+
+
+def test_backward_benchmark(benchmark):
+    shape = (32, 32, 32)
+    inputs = torch.randn(2, *shape).cuda().requires_grad_(True)
+    weights = torch.randn(3**3, *shape).cuda().requires_grad_(True)
+    biases = torch.randn(*shape).cuda().requires_grad_(True)
+    out_grad = torch.randn_like(inputs)
+
+    def fn():
+        out = outer_step_pytorch(weights, biases, inputs, 10, block_size=8)
+        _grads = torch.autograd.grad(out, (inputs, weights, biases), out_grad)
+        torch.cuda.synchronize()
+
+    benchmark(fn)
