@@ -40,9 +40,9 @@ class GridnetCudaOp(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         (weight, bias, init_activations) = ctx.saved_tensors
-        weight_grad = torch.empty_like(weight)
-        bias_grad = torch.empty_like(bias)
-        init_activations_grad = torch.empty_like(init_activations)
+        weight_grad = torch.zeros_like(weight)
+        bias_grad = torch.zeros_like(bias)
+        init_activations_grad = torch.zeros_like(init_activations)
         gridnet_cuda.backward(
             weight,
             bias,
@@ -55,4 +55,4 @@ class GridnetCudaOp(torch.autograd.Function):
             ctx.block_size,
             ctx.eps,
         )
-        return weight_grad, bias_grad, init_activations, None, None, None
+        return weight_grad, bias_grad, init_activations_grad, None, None, None
