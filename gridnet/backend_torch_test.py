@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from gridnet.backend_torch import outer_step_pytorch
+from gridnet.backend_torch import gridnet_step_pytorch
 
 
 @pytest.mark.parametrize(
@@ -14,11 +14,11 @@ from gridnet.backend_torch import outer_step_pytorch
         ((32, 64, 128), 8),
     ),
 )
-def test_outer_step_zero_iters(shape: Tuple[int, int, int], block_size: int):
+def test_gridnet_step_zero_iters(shape: Tuple[int, int, int], block_size: int):
     inputs = torch.randn(2, *shape)
     weights = torch.randn(3**3, *shape)
     biases = torch.randn(*shape)
-    outputs = outer_step_pytorch(weights, biases, inputs, 0, block_size=block_size)
+    outputs = gridnet_step_pytorch(weights, biases, inputs, 0, block_size=block_size)
     assert torch.allclose(outputs, inputs)
 
 
@@ -29,11 +29,11 @@ def test_outer_step_zero_iters(shape: Tuple[int, int, int], block_size: int):
         ((32, 64, 128), 8),
     ),
 )
-def test_outer_step_zero_weights(shape: Tuple[int, int, int], block_size: int):
+def test_gridnet_step_zero_weights(shape: Tuple[int, int, int], block_size: int):
     inputs = torch.randn(2, *shape)
     weights = torch.zeros(3**3, *shape)
     biases = torch.zeros(*shape)
-    outputs = outer_step_pytorch(weights, biases, inputs, 10, block_size=block_size)
+    outputs = gridnet_step_pytorch(weights, biases, inputs, 10, block_size=block_size)
     padded = F.pad(inputs, (1,) * 6)
     for i in range(1, shape[0] - 2, block_size):
         for j in range(1, shape[1] - 2, block_size):
@@ -59,7 +59,7 @@ def test_forward_benchmark(benchmark):
     torch.cuda.synchronize()
 
     def fn():
-        outer_step_pytorch(weights, biases, inputs, 10, block_size=8)
+        gridnet_step_pytorch(weights, biases, inputs, 10, block_size=8)
         torch.cuda.synchronize()
 
     benchmark(fn)
@@ -73,7 +73,7 @@ def test_backward_benchmark(benchmark):
     out_grad = torch.randn_like(inputs)
 
     def fn():
-        out = outer_step_pytorch(weights, biases, inputs, 10, block_size=8)
+        out = gridnet_step_pytorch(weights, biases, inputs, 10, block_size=8)
         _grads = torch.autograd.grad(out, (inputs, weights, biases), out_grad)
         torch.cuda.synchronize()
 

@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 
-def outer_step_pytorch(
+def gridnet_step_pytorch(
     weight: torch.Tensor,
     bias: torch.Tensor,
     init_activations: torch.Tensor,

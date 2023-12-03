@@ -3,7 +3,7 @@ from typing import Tuple
 import pytest
 import torch
 
-from gridnet.backend_torch import outer_step_pytorch
+from gridnet.backend_torch import gridnet_step_pytorch
 
 
 @pytest.mark.parametrize(
@@ -22,7 +22,7 @@ def test_forward_equivalence(shape: Tuple[int, int, int], block_size: int):
     inputs = torch.randn(2, *shape).cuda()
     weights = torch.randn(3**3, *shape).cuda()
     biases = torch.randn(*shape).cuda()
-    expected = outer_step_pytorch(weights, biases, inputs, 2, block_size, eps)
+    expected = gridnet_step_pytorch(weights, biases, inputs, 2, block_size, eps)
     actual = GridnetCudaOp.apply(weights, biases, inputs, 2, block_size, eps)
     assert (actual - expected).abs().max().item() < 1e-4
 
@@ -46,7 +46,9 @@ def test_grad_equivalence(
     inputs = torch.randn(2, *shape).cuda().requires_grad_(True)
     weights = torch.randn(3**3, *shape).cuda().requires_grad_(True)
     biases = torch.randn(*shape).cuda().requires_grad_(True)
-    expected = outer_step_pytorch(weights, biases, inputs, inner_iters, block_size, eps)
+    expected = gridnet_step_pytorch(
+        weights, biases, inputs, inner_iters, block_size, eps
+    )
     out_grad = torch.randn_like(expected).cuda()
     expected_grads = torch.autograd.grad(expected, (biases, weights, inputs), out_grad)
     actual = GridnetCudaOp.apply(weights, biases, inputs, inner_iters, block_size, eps)

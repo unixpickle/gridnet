@@ -24,6 +24,18 @@ class GridnetCudaOp(torch.autograd.Function):
         assert (
             bias.shape == weight.shape[1:]
         ), f"{bias.shape=} invalid for {weight.shape=}"
+        assert (
+            weight.dtype == bias.dtype
+        ), f"mismatching dtypes: {weight.dtype=} {bias.dtype=}"
+        assert (
+            weight.dtype == init_activations.dtype
+        ), f"mismatching dtypes: {weight.dtype=} {init_activations.dtype=}"
+        assert (
+            weight.device == bias.device
+        ), f"mismatching devices: {weight.device=} {bias.device=}"
+        assert (
+            weight.device == init_activations.device
+        ), f"mismatching devices: {weight.devicee=} {init_activations.device=}"
         if not batch_size:
             return init_activations.clone()
         ctx.save_for_backward(weight, bias, init_activations)
