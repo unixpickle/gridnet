@@ -22,13 +22,16 @@ class Gridnet(nn.Module):
         device: torch.device,
         dtype: torch.dtype = torch.float32,
         eps: float = 1e-5,
+        init_scale: float = 1.0,
     ):
         super().__init__()
+        self.shape = shape
         self.inner_iterations = inner_iterations
         self.block_size = block_size
-        self.weight = torch.randn(
-            3**3, *shape, device=device, dtype=dtype
-        ) / math.sqrt(27)
+        self.eps = eps
+        self.weight = torch.randn(3**3, *shape, device=device, dtype=dtype) * (
+            init_scale / math.sqrt(27)
+        )
         self.bias = torch.zeros(*shape, device=device, dtype=dtype)
         self.device = device
         self.dtype = dtype
@@ -42,6 +45,28 @@ class Gridnet(nn.Module):
             block_size=self.block_size,
             eps=self.eps,
         )
+
+
+class Readout(nn.Module):
+    def __init__(
+        self,
+        grid_shape: Tuple[int, int, int],
+        out_channels: int,
+        device: torch.device,
+        dtype: torch.dtype = torch.float32,
+        output_layers: int = 1,
+    ):
+        super().__init__()
+        size = grid_shape[0] * grid_shape[1] * output_layers
+        self.output_layers = output_layers
+        self.norm = nn.LayerNorm(size, device=device, dtype=dtype)
+        self.proj = nn.Linear(size, out_channels, device=device, dtype=dtype)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = x[:, :, :, -self.output_layers].flatten(1)
+        h = self.norm(h)
+        h = self.proj(h)
+        return h
 
 
 def gridnet_step(

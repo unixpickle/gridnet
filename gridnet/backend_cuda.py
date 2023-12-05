@@ -35,7 +35,7 @@ class GridnetCudaOp(torch.autograd.Function):
         ), f"mismatching devices: {weight.device=} {bias.device=}"
         assert (
             weight.device == init_activations.device
-        ), f"mismatching devices: {weight.devicee=} {init_activations.device=}"
+        ), f"mismatching devices: {weight.device=} {init_activations.device=}"
         if not batch_size:
             return init_activations.clone()
         ctx.save_for_backward(weight, bias, init_activations)
