@@ -18,13 +18,19 @@ class Model(nn.Module):
         inner_iters: int,
         outer_iters: int,
         init_scale: float,
+        residual_scale: float,
         device: torch.device,
     ):
         super().__init__()
         self.outer_iters = outer_iters
         self.device = device
         self.network = Gridnet(
-            (32, 32, 32), inner_iters, 8, init_scale=init_scale, device=device
+            (32, 32, 32),
+            inner_iters,
+            8,
+            init_scale=init_scale,
+            residual_scale=residual_scale,
+            device=device,
         )
         self.readout = Readout((32, 32, 32), out_channels=10, device=device)
 
@@ -42,7 +48,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=1e-3)
-    parser.add_argument("--init_scale", type=float, default=0.01)
+    parser.add_argument("--init_scale", type=float, default=1.0)
+    parser.add_argument("--residual_scale", type=float, default=0.1)
     parser.add_argument("--max_iters", type=int, default=10000)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--inner_iters", type=int, default=7)
@@ -58,6 +65,7 @@ def main():
         inner_iters=args.inner_iters,
         outer_iters=args.outer_iters,
         init_scale=args.init_scale,
+        residual_scale=args.residual_scale,
         device=device,
     )
     opt = AdamW(

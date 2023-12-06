@@ -7,6 +7,7 @@ import torch.nn.functional as F
 def gridnet_step_pytorch(
     weight: torch.Tensor,
     bias: torch.Tensor,
+    residual_scale: torch.Tensor,
     init_activations: torch.Tensor,
     inner_iterations: int,
     block_size: int,
@@ -21,6 +22,8 @@ def gridnet_step_pytorch(
                    with the (blockwise normalized) neighboring 3x3 grid.
     :param bias: an [M x N x K] bias matrix, which is combined with weights
                  during each recurrent iteration.
+    :param residual_scale: an [M x N x K] scale parameter to multiply by
+                           post-activation results.
     :param init_activations: the input [B x M x N x K] activation grid.
     :param inner_iterations: the number of recurrent iterations to run for
                              each [block_size x block_size x block_size]
@@ -45,6 +48,9 @@ def gridnet_step_pytorch(
         *init_activations.shape[1:],
     ), f"{weight.shape=} invalid for {init_activations.shape=}"
     assert bias.shape == weight.shape[1:], f"{bias.shape=} invalid for {weight.shape=}"
+    assert (
+        bias.shape == residual_scale.shape
+    ), f"{residual_scale.shape=} invalid for {bias.shape=}"
 
     block_fn = inner_step_fn(block_size, eps, weight.device)
     output_blocks = []
@@ -69,9 +75,14 @@ def gridnet_step_pytorch(
                     b - 1 : b - 1 + block_size,
                     c - 1 : c - 1 + block_size,
                 ]
+                scale_in = residual_scale[
+                    a - 1 : a - 1 + block_size,
+                    b - 1 : b - 1 + block_size,
+                    c - 1 : c - 1 + block_size,
+                ]
                 block_out = block_in
                 for _ in range(inner_iterations):
-                    block_out = block_fn(block_out, weight_in, bias_in)
+                    block_out = block_fn(block_out, weight_in, bias_in, scale_in)
                 output_blocks.append(block_out[:, 1:-1, 1:-1, 1:-1])
     return (
         torch.stack(output_blocks)
@@ -109,7 +120,10 @@ def inner_step_fn(
     input_index_tensor = torch.tensor(indices, device=device, dtype=torch.long)
 
     def inner_fn(
-        activations: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor
+        activations: torch.Tensor,
+        weight: torch.Tensor,
+        bias: torch.Tensor,
+        scale: torch.Tensor,
     ) -> torch.Tensor:
         batch_size = activations.shape[0]
         flattened = activations.flatten(1)  # [batch_size x (block_size + 2)^3]
@@ -121,6 +135,7 @@ def inner_step_fn(
         ).reshape(batch_size, block_size**3, 3**3)
         results = (patches * weight.flatten(1).t()).sum(-1) + bias.flatten()
         results = F.silu(results)
+        results = results * scale.flatten()
         results = results.reshape(-1, block_size, block_size, block_size)
         results = F.pad(results, (1, 1, 1, 1, 1, 1))
         return results + activations

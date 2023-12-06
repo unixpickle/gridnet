@@ -12,6 +12,7 @@
 void gridnet_cuda_forward(
     torch::Tensor weight,
     torch::Tensor bias,
+    torch::Tensor scale,
     torch::Tensor initActivations,
     torch::Tensor outActivations,
     uint innerIterations,
@@ -21,10 +22,12 @@ void gridnet_cuda_forward(
 void gridnet_cuda_backward(
     torch::Tensor weight,
     torch::Tensor bias,
+    torch::Tensor scale,
     torch::Tensor initActivations,
     torch::Tensor outGrads,
     torch::Tensor weightGradOut,
     torch::Tensor biasGradOut,
+    torch::Tensor scaleGradOut,
     torch::Tensor activationsGradOut,
     uint innerIterations,
     uint blockSize,
@@ -33,6 +36,7 @@ void gridnet_cuda_backward(
 void gridnet_forward(
     torch::Tensor weight,
     torch::Tensor bias,
+    torch::Tensor scale,
     torch::Tensor initActivations,
     torch::Tensor outActivations,
     uint innerIterations,
@@ -41,11 +45,13 @@ void gridnet_forward(
 {
     CHECK_INPUT(weight);
     CHECK_INPUT(bias);
+    CHECK_INPUT(scale);
     CHECK_INPUT(initActivations);
     CHECK_INPUT(outActivations);
     gridnet_cuda_forward(
         weight,
         bias,
+        scale,
         initActivations,
         outActivations,
         innerIterations,
@@ -56,10 +62,12 @@ void gridnet_forward(
 void gridnet_backward(
     torch::Tensor weight,
     torch::Tensor bias,
+    torch::Tensor scale,
     torch::Tensor initActivations,
     torch::Tensor outGrads,
     torch::Tensor weightGradOut,
     torch::Tensor biasGradOut,
+    torch::Tensor scaleGradOut,
     torch::Tensor activationsGradOut,
     uint innerIterations,
     uint blockSize,
@@ -67,6 +75,7 @@ void gridnet_backward(
 {
     CHECK_INPUT(weight);
     CHECK_INPUT(bias);
+    CHECK_INPUT(scale);
     CHECK_INPUT(initActivations);
     CHECK_INPUT(outGrads);
     CHECK_INPUT(weightGradOut);
@@ -75,10 +84,12 @@ void gridnet_backward(
     gridnet_cuda_backward(
         weight,
         bias,
+        scale,
         initActivations,
         outGrads,
         weightGradOut,
         biasGradOut,
+        scaleGradOut,
         activationsGradOut,
         innerIterations,
         blockSize,

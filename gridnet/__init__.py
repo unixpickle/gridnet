@@ -23,6 +23,7 @@ class Gridnet(nn.Module):
         dtype: torch.dtype = torch.float32,
         eps: float = 1e-5,
         init_scale: float = 1.0,
+        residual_scale: float = 1.0,
     ):
         super().__init__()
         self.shape = shape
@@ -33,6 +34,9 @@ class Gridnet(nn.Module):
             init_scale / math.sqrt(27)
         )
         self.bias = torch.zeros(*shape, device=device, dtype=dtype)
+        self.residual_scale = (
+            torch.ones(*shape, device=device, dtype=dtype) * residual_scale
+        )
         self.device = device
         self.dtype = dtype
 
@@ -40,6 +44,7 @@ class Gridnet(nn.Module):
         return gridnet_step(
             weight=self.weight,
             bias=self.bias,
+            residual_scale=self.residual_scale,
             init_activations=x,
             inner_iterations=self.inner_iterations,
             block_size=self.block_size,
@@ -72,6 +77,7 @@ class Readout(nn.Module):
 def gridnet_step(
     weight: torch.Tensor,
     bias: torch.Tensor,
+    residual_scale: torch.Tensor,
     init_activations: torch.Tensor,
     inner_iterations: int,
     block_size: int,
@@ -86,6 +92,8 @@ def gridnet_step(
                    with the (blockwise normalized) neighboring 3x3 grid.
     :param bias: an [M x N x K] bias matrix, which is combined with weights
                  during each recurrent iteration.
+    :param residual_scale: an [M x N x K] scale parameter to multiply by
+                           post-activation results.
     :param init_activations: the input [B x M x N x K] activation grid.
     :param inner_iterations: the number of recurrent iterations to run for
                              each [block_size x block_size x block_size]
@@ -111,9 +119,21 @@ def gridnet_step(
             )
         else:
             return GridnetCudaOp.apply(
-                weight, bias, init_activations, inner_iterations, block_size, eps
+                weight,
+                bias,
+                residual_scale,
+                init_activations,
+                inner_iterations,
+                block_size,
+                eps,
             )
 
     return gridnet_step_pytorch(
-        weight, bias, init_activations, inner_iterations, block_size, eps
+        weight,
+        bias,
+        residual_scale,
+        init_activations,
+        inner_iterations,
+        block_size,
+        eps,
     )

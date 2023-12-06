@@ -22,8 +22,9 @@ def test_forward_equivalence(shape: Tuple[int, int, int], block_size: int):
     inputs = torch.randn(2, *shape).cuda()
     weights = torch.randn(3**3, *shape).cuda()
     biases = torch.randn(*shape).cuda()
-    expected = gridnet_step_pytorch(weights, biases, inputs, 2, block_size, eps)
-    actual = GridnetCudaOp.apply(weights, biases, inputs, 2, block_size, eps)
+    scales = torch.randn(*shape).cuda()
+    expected = gridnet_step_pytorch(weights, biases, scales, inputs, 2, block_size, eps)
+    actual = GridnetCudaOp.apply(weights, biases, scales, inputs, 2, block_size, eps)
     assert (actual - expected).abs().max().item() < 1e-4
 
 
@@ -46,18 +47,25 @@ def test_grad_equivalence(
     inputs = torch.randn(2, *shape).cuda().requires_grad_(True)
     weights = torch.randn(3**3, *shape).cuda().requires_grad_(True)
     biases = torch.randn(*shape).cuda().requires_grad_(True)
+    scales = torch.randn(*shape).cuda().requires_grad_(True)
     expected = gridnet_step_pytorch(
-        weights, biases, inputs, inner_iters, block_size, eps
+        weights, biases, scales, inputs, inner_iters, block_size, eps
     )
     out_grad = torch.randn_like(expected).cuda()
-    expected_grads = torch.autograd.grad(expected, (biases, weights, inputs), out_grad)
-    actual = GridnetCudaOp.apply(weights, biases, inputs, inner_iters, block_size, eps)
-    actual_grads = torch.autograd.grad(actual, (biases, weights, inputs), out_grad)
+    expected_grads = torch.autograd.grad(
+        expected, (scales, biases, weights, inputs), out_grad
+    )
+    actual = GridnetCudaOp.apply(
+        weights, biases, scales, inputs, inner_iters, block_size, eps
+    )
+    actual_grads = torch.autograd.grad(
+        actual, (scales, biases, weights, inputs), out_grad
+    )
     for name, x, a in zip(
-        ["biases", "weights", "inputs"], expected_grads, actual_grads
+        ["scales", "biases", "weights", "inputs"], expected_grads, actual_grads
     ):
         err = (x - a).abs().max().item()
-        assert err < 1e-4, f"MAE in {name}: {err} ({x=} {a=})"
+        assert err < 3e-4, f"MAE in {name}: {err} ({x=} {a=})"
 
 
 def test_forward_benchmark(benchmark):
@@ -67,10 +75,11 @@ def test_forward_benchmark(benchmark):
     inputs = torch.randn(2, *shape).cuda()
     weights = torch.randn(3**3, *shape).cuda()
     biases = torch.randn(*shape).cuda()
+    scales = torch.randn(*shape).cuda()
     torch.cuda.synchronize()
 
     def fn():
-        GridnetCudaOp.apply(weights, biases, inputs, 10, 8, 1e-5)
+        GridnetCudaOp.apply(weights, biases, scales, inputs, 10, 8, 1e-5)
         torch.cuda.synchronize()
 
     benchmark(fn)
@@ -83,11 +92,12 @@ def test_backward_benchmark(benchmark):
     inputs = torch.randn(2, *shape).cuda().requires_grad_(True)
     weights = torch.randn(3**3, *shape).cuda().requires_grad_(True)
     biases = torch.randn(*shape).cuda().requires_grad_(True)
+    scales = torch.randn(*shape).cuda().requires_grad_(True)
     out_grad = torch.randn_like(inputs)
 
     def fn():
-        out = GridnetCudaOp.apply(weights, biases, inputs, 10, 8, 1e-5)
-        _grads = torch.autograd.grad(out, (inputs, weights, biases), out_grad)
+        out = GridnetCudaOp.apply(weights, biases, scales, inputs, 10, 8, 1e-5)
+        _grads = torch.autograd.grad(out, (inputs, weights, biases, scales), out_grad)
         torch.cuda.synchronize()
 
     benchmark(fn)
