@@ -1,5 +1,4 @@
 import argparse
-from itertools import count
 from typing import Iterator
 
 import torch
