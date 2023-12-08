@@ -36,7 +36,9 @@ class Model(nn.Module):
             init_scale=init_scale,
             residual_scale=residual_scale,
             device=device,
+            normalize=False,
         )
+        self.norm = nn.LayerNorm((32,) * 3, device=device)
         self.readout = Readout((32, 32, 32), out_channels=28 * 28, device=device)
 
     def forward(self, batch: torch.Tensor):
@@ -46,6 +48,7 @@ class Model(nn.Module):
         h = init_acts
         for _ in range(self.outer_iters):
             h = self.network(h)
+            h = self.norm(h)
         h = self.readout(h)
         return h.reshape(batch.shape)
 
@@ -56,10 +59,10 @@ def main():
     parser.add_argument("--weight_decay", type=float, default=1e-3)
     parser.add_argument("--init_scale", type=float, default=1.0)
     parser.add_argument("--residual_scale", type=float, default=1.0)
-    parser.add_argument("--max_iters", type=int, default=10000)
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--inner_iters", type=int, default=8)
-    parser.add_argument("--outer_iters", type=int, default=6)
+    parser.add_argument("--max_iters", type=int, default=2000)
+    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--inner_iters", type=int, default=1)
+    parser.add_argument("--outer_iters", type=int, default=64)
     args = parser.parse_args()
 
     if torch.cuda.is_available():

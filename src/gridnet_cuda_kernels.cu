@@ -96,7 +96,7 @@ silu_grad(scalar_t x)
     return sig * (1 + x * (1 - sig));
 }
 
-template <typename scalar_t>
+template <typename scalar_t, bool normalize>
 __global__ void __launch_bounds__(512, 1) gridnet_cuda_forward_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 4> weight,
     const torch::PackedTensorAccessor32<scalar_t, 3> bias,
@@ -158,11 +158,15 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_forward_kernel(
 
         // Communicate per-block normalization.
         scalar_t localAct = activations[paddedOffset];
-        scalar_t mean = reduce_mean(
-            activations, aggBuf, false, activationsSize, threadOffset, numThreads);
-        scalar_t sqMean = reduce_mean(
-            activations, aggBuf, true, activationsSize, threadOffset, numThreads);
-        scalar_t std = (scalar_t)sqrtf(fmaxf((float)(sqMean - mean * mean), 0.0));
+        scalar_t mean;
+        scalar_t std;
+        if (normalize) {
+            mean = reduce_mean(
+                activations, aggBuf, false, activationsSize, threadOffset, numThreads);
+            scalar_t sqMean = reduce_mean(
+                activations, aggBuf, true, activationsSize, threadOffset, numThreads);
+            std = (scalar_t)sqrtf(fmaxf((float)(sqMean - mean * mean), 0.0));
+        }
 
         // Compute dot product.
         scalar_t dot = localBias;
@@ -170,7 +174,10 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_forward_kernel(
             for (uint b = 0; b < 3; b++) {
                 for (uint c = 0; c < 3; c++) {
                     uint cellOffset = threadIdx.x + c + (blockSize + 2) * (threadIdx.y + b + (blockSize + 2) * (threadIdx.z + a));
-                    scalar_t act = (activations[cellOffset] - mean) / (std + eps);
+                    scalar_t act = activations[cellOffset];
+                    if (normalize) {
+                        act = (act - mean) / (std + eps);
+                    }
                     scalar_t weight = localWeights[a * 9 + b * 3 + c];
                     dot += act * weight;
                 }
@@ -191,7 +198,7 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_forward_kernel(
     outActivations[batchIdx][blockZ * blockSize + threadIdx.z][blockY * blockSize + threadIdx.y][blockX * blockSize + threadIdx.x] = activations[paddedOffset];
 }
 
-template <typename scalar_t, uint iterationsBufferSize>
+template <typename scalar_t, uint iterationsBufferSize, bool normalize>
 __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 4> weight,
     const torch::PackedTensorAccessor32<scalar_t, 3> bias,
@@ -272,11 +279,15 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
         // Communicate per-block normalization.
         scalar_t localAct = activations[paddedOffset];
         activationsBuffer[i] = localAct;
-        scalar_t mean = reduce_mean(
-            activations, aggBuf, false, activationsSize, threadOffset, numThreads);
-        scalar_t sqMean = reduce_mean(
-            activations, aggBuf, true, activationsSize, threadOffset, numThreads);
-        scalar_t std = (scalar_t)sqrtf(fmaxf((float)(sqMean - mean * mean), 0.0));
+        scalar_t mean;
+        scalar_t std;
+        if (normalize) {
+            mean = reduce_mean(
+                activations, aggBuf, false, activationsSize, threadOffset, numThreads);
+            scalar_t sqMean = reduce_mean(
+                activations, aggBuf, true, activationsSize, threadOffset, numThreads);
+            std = (scalar_t)sqrtf(fmaxf((float)(sqMean - mean * mean), 0.0));
+        }
 
         // Compute dot product.
         scalar_t dot = localBias;
@@ -284,7 +295,10 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
             for (uint b = 0; b < 3; b++) {
                 for (uint c = 0; c < 3; c++) {
                     uint cellOffset = threadIdx.x + c + (blockSize + 2) * (threadIdx.y + b + (blockSize + 2) * (threadIdx.z + a));
-                    scalar_t act = (activations[cellOffset] - mean) / (std + eps);
+                    scalar_t act = activations[cellOffset];
+                    if (normalize) {
+                        act = (act - mean) / (std + eps);
+                    }
                     scalar_t weight = localWeights[a * 9 + b * 3 + c];
                     dot += act * weight;
                 }
@@ -314,11 +328,15 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
         __syncthreads();
 
         // Communicate per-block normalization.
-        scalar_t mean = reduce_mean(
-            activations, aggBuf, false, activationsSize, threadOffset, numThreads);
-        scalar_t sqMean = reduce_mean(
-            activations, aggBuf, true, activationsSize, threadOffset, numThreads);
-        scalar_t std = (scalar_t)sqrtf(fmaxf((float)(sqMean - mean * mean), 0.0));
+        scalar_t mean;
+        scalar_t std;
+        if (normalize) {
+            mean = reduce_mean(
+                activations, aggBuf, false, activationsSize, threadOffset, numThreads);
+            scalar_t sqMean = reduce_mean(
+                activations, aggBuf, true, activationsSize, threadOffset, numThreads);
+            std = (scalar_t)sqrtf(fmaxf((float)(sqMean - mean * mean), 0.0));
+        }
 
         // Recompute the input to the activation.
         scalar_t dot = localBias;
@@ -326,7 +344,10 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
             for (uint b = 0; b < 3; b++) {
                 for (uint c = 0; c < 3; c++) {
                     uint cellOffset = threadIdx.x + c + (blockSize + 2) * (threadIdx.y + b + (blockSize + 2) * (threadIdx.z + a));
-                    scalar_t act = (activations[cellOffset] - mean) / (std + eps);
+                    scalar_t act = activations[cellOffset];
+                    if (normalize) {
+                        act = (act - mean) / (std + eps);
+                    }
                     scalar_t weight = localWeights[a * 9 + b * 3 + c];
                     dot += act * weight;
                 }
@@ -350,33 +371,44 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
                 for (uint c = 0; c < 3; c++) {
                     uint cellOffset = threadIdx.x + c + (blockSize + 2) * (threadIdx.y + b + (blockSize + 2) * (threadIdx.z + a));
                     scalar_t rawAct = activations[cellOffset];
-                    scalar_t act = (rawAct - mean) / (std + eps);
+                    scalar_t act = rawAct;
+                    if (normalize) {
+                        act = (rawAct - mean) / (std + eps);
+                    }
                     localWeightsGradAcc[a * 9 + b * 3 + c] += act * innerGrad;
                     scalar_t weight = localWeights[a * 9 + b * 3 + c];
-                    atomicAdd(&activationsGradAcc[cellOffset], (weight / (std + eps)) * innerGrad);
-                    meanGrad -= (weight / (std + eps)) * innerGrad;
-                    stdGrad += (rawAct - mean) * weight * innerGrad;
+                    if (normalize) {
+                        atomicAdd(&activationsGradAcc[cellOffset], (weight / (std + eps)) * innerGrad);
+                    } else {
+                        atomicAdd(&activationsGradAcc[cellOffset], weight * innerGrad);
+                    }
+                    if (normalize) {
+                        meanGrad -= (weight / (std + eps)) * innerGrad;
+                        stdGrad += (rawAct - mean) * weight * innerGrad;
+                    }
                 }
             }
         }
 
-        // Accumulate gradients of input activations w.r.t. mean/std
-        meanGrad = reduce_sum(meanGrad, aggBuf, threadOffset, numThreads);
-        stdGrad = reduce_sum(stdGrad, aggBuf, threadOffset, numThreads);
+        if (normalize) {
+            // Accumulate gradients of input activations w.r.t. mean/std
+            meanGrad = reduce_sum(meanGrad, aggBuf, threadOffset, numThreads);
+            stdGrad = reduce_sum(stdGrad, aggBuf, threadOffset, numThreads);
 
-        //   d/dx of 1/(std+eps)
-        // = -1/(x+eps)^2 * d/dx std
-        stdGrad *= -1 / ((std + eps) * (std + eps));
+            //   d/dx of 1/(std+eps)
+            // = -1/(x+eps)^2 * d/dx std
+            stdGrad *= -1 / ((std + eps) * (std + eps));
 
-        for (uint i = 0; i < activationsSize; i += numThreads) {
-            uint offset = i + threadOffset;
-            if (offset < activationsSize) {
-                scalar_t activation = activations[offset];
-                scalar_t n = (scalar_t)activationsSize;
-                activationsGradAcc[offset] += meanGrad / n;
-                // The fmaxf() isn't actually correct, but helps us prevent
-                // ill-behaved gradients.
-                activationsGradAcc[offset] += stdGrad * (activation / n - mean / n) / fmaxf(std, eps);
+            for (uint i = 0; i < activationsSize; i += numThreads) {
+                uint offset = i + threadOffset;
+                if (offset < activationsSize) {
+                    scalar_t activation = activations[offset];
+                    scalar_t n = (scalar_t)activationsSize;
+                    activationsGradAcc[offset] += meanGrad / n;
+                    // The fmaxf() isn't actually correct, but helps us prevent
+                    // ill-behaved gradients.
+                    activationsGradAcc[offset] += stdGrad * (activation / n - mean / n) / fmaxf(std, eps);
+                }
             }
         }
 
@@ -422,7 +454,8 @@ void gridnet_cuda_forward(
     torch::Tensor outActivations,
     uint innerIterations,
     uint blockSize,
-    float eps)
+    float eps,
+    bool normalize)
 {
     const int batchSize = initActivations.size(0);
     const uint m = initActivations.size(1);
@@ -431,17 +464,31 @@ void gridnet_cuda_forward(
 
     const dim3 threads(blockSize, blockSize, blockSize);
     const dim3 blocks(batchSize, (m / blockSize) * (n / blockSize) * (k / blockSize));
-    AT_DISPATCH_FLOATING_TYPES(
-        weight.scalar_type(),
-        "gridnet_cuda_forward",
-        ([&] { gridnet_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
-                   weight.packed_accessor32<scalar_t, 4>(),
-                   bias.packed_accessor32<scalar_t, 3>(),
-                   scale.packed_accessor32<scalar_t, 3>(),
-                   initActivations.packed_accessor32<scalar_t, 4>(),
-                   outActivations.packed_accessor32<scalar_t, 4>(),
-                   innerIterations,
-                   eps); }));
+    if (normalize) {
+        AT_DISPATCH_FLOATING_TYPES(
+            weight.scalar_type(),
+            "gridnet_cuda_forward",
+            ([&] { gridnet_cuda_forward_kernel<scalar_t, true><<<blocks, threads>>>(
+                       weight.packed_accessor32<scalar_t, 4>(),
+                       bias.packed_accessor32<scalar_t, 3>(),
+                       scale.packed_accessor32<scalar_t, 3>(),
+                       initActivations.packed_accessor32<scalar_t, 4>(),
+                       outActivations.packed_accessor32<scalar_t, 4>(),
+                       innerIterations,
+                       eps); }));
+    } else {
+        AT_DISPATCH_FLOATING_TYPES(
+            weight.scalar_type(),
+            "gridnet_cuda_forward",
+            ([&] { gridnet_cuda_forward_kernel<scalar_t, false><<<blocks, threads>>>(
+                       weight.packed_accessor32<scalar_t, 4>(),
+                       bias.packed_accessor32<scalar_t, 3>(),
+                       scale.packed_accessor32<scalar_t, 3>(),
+                       initActivations.packed_accessor32<scalar_t, 4>(),
+                       outActivations.packed_accessor32<scalar_t, 4>(),
+                       innerIterations,
+                       eps); }));
+    }
 }
 
 void gridnet_cuda_backward(
@@ -456,7 +503,8 @@ void gridnet_cuda_backward(
     torch::Tensor activationsGradOut,
     uint innerIterations,
     uint blockSize,
-    float eps)
+    float eps,
+    bool normalize)
 {
     const int batchSize = initActivations.size(0);
     const uint m = initActivations.size(1);
@@ -465,55 +513,43 @@ void gridnet_cuda_backward(
 
     const dim3 threads(blockSize, blockSize, blockSize);
     const dim3 blocks(batchSize, (m / blockSize) * (n / blockSize) * (k / blockSize));
-    if (innerIterations <= 8) {
-        AT_DISPATCH_FLOATING_TYPES(
-            weight.scalar_type(),
-            "gridnet_cuda_backward",
-            ([&] { gridnet_cuda_backward_kernel<scalar_t, 8><<<blocks, threads>>>(
-                       weight.packed_accessor32<scalar_t, 4>(),
-                       bias.packed_accessor32<scalar_t, 3>(),
-                       scale.packed_accessor32<scalar_t, 3>(),
-                       initActivations.packed_accessor32<scalar_t, 4>(),
-                       outGrads.packed_accessor32<scalar_t, 4>(),
-                       weightGradOut.packed_accessor32<scalar_t, 4>(),
-                       biasGradOut.packed_accessor32<scalar_t, 3>(),
-                       scaleGradOut.packed_accessor32<scalar_t, 3>(),
-                       activationsGradOut.packed_accessor32<scalar_t, 4>(),
-                       innerIterations,
-                       eps); }));
-    } else if (innerIterations <= 16) {
-        AT_DISPATCH_FLOATING_TYPES(
-            weight.scalar_type(),
-            "gridnet_cuda_backward",
-            ([&] { gridnet_cuda_backward_kernel<scalar_t, 16><<<blocks, threads>>>(
-                       weight.packed_accessor32<scalar_t, 4>(),
-                       bias.packed_accessor32<scalar_t, 3>(),
-                       scale.packed_accessor32<scalar_t, 3>(),
-                       initActivations.packed_accessor32<scalar_t, 4>(),
-                       outGrads.packed_accessor32<scalar_t, 4>(),
-                       weightGradOut.packed_accessor32<scalar_t, 4>(),
-                       biasGradOut.packed_accessor32<scalar_t, 3>(),
-                       scaleGradOut.packed_accessor32<scalar_t, 3>(),
-                       activationsGradOut.packed_accessor32<scalar_t, 4>(),
-                       innerIterations,
-                       eps); }));
-    } else if (innerIterations <= 32) {
-        AT_DISPATCH_FLOATING_TYPES(
-            weight.scalar_type(),
-            "gridnet_cuda_backward",
-            ([&] { gridnet_cuda_backward_kernel<scalar_t, 32><<<blocks, threads>>>(
-                       weight.packed_accessor32<scalar_t, 4>(),
-                       bias.packed_accessor32<scalar_t, 3>(),
-                       scale.packed_accessor32<scalar_t, 3>(),
-                       initActivations.packed_accessor32<scalar_t, 4>(),
-                       outGrads.packed_accessor32<scalar_t, 4>(),
-                       weightGradOut.packed_accessor32<scalar_t, 4>(),
-                       biasGradOut.packed_accessor32<scalar_t, 3>(),
-                       scaleGradOut.packed_accessor32<scalar_t, 3>(),
-                       activationsGradOut.packed_accessor32<scalar_t, 4>(),
-                       innerIterations,
-                       eps); }));
+
+    // Macro for instantiating many different template variations.
+#define BACKWARD(inner, norm) AT_DISPATCH_FLOATING_TYPES(                            \
+    weight.scalar_type(),                                                            \
+    "gridnet_cuda_backward",                                                         \
+    ([&] { gridnet_cuda_backward_kernel<scalar_t, inner, norm><<<blocks, threads>>>( \
+               weight.packed_accessor32<scalar_t, 4>(),                              \
+               bias.packed_accessor32<scalar_t, 3>(),                                \
+               scale.packed_accessor32<scalar_t, 3>(),                               \
+               initActivations.packed_accessor32<scalar_t, 4>(),                     \
+               outGrads.packed_accessor32<scalar_t, 4>(),                            \
+               weightGradOut.packed_accessor32<scalar_t, 4>(),                       \
+               biasGradOut.packed_accessor32<scalar_t, 3>(),                         \
+               scaleGradOut.packed_accessor32<scalar_t, 3>(),                        \
+               activationsGradOut.packed_accessor32<scalar_t, 4>(),                  \
+               innerIterations,                                                      \
+               eps); }));
+
+    if (normalize) {
+        if (innerIterations <= 8) {
+            BACKWARD(8, true);
+        } else if (innerIterations <= 16) {
+            BACKWARD(16, true);
+        } else if (innerIterations <= 32) {
+            BACKWARD(32, true);
+        } else {
+            throw std::runtime_error("cannot backprop through more than 32 inner iterations");
+        }
     } else {
-        throw std::runtime_error("cannot backprop through more than 32 inner iterations");
+        if (innerIterations <= 8) {
+            BACKWARD(8, false);
+        } else if (innerIterations <= 16) {
+            BACKWARD(16, false);
+        } else if (innerIterations <= 32) {
+            BACKWARD(32, false);
+        } else {
+            throw std::runtime_error("cannot backprop through more than 32 inner iterations");
+        }
     }
 }

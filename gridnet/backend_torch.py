@@ -12,6 +12,7 @@ def gridnet_step_pytorch(
     inner_iterations: int,
     block_size: int,
     eps: float = 1e-5,
+    normalize: bool = True,
 ) -> torch.Tensor:
     """
     Apply a forward pass of the model on an activations Tensor
@@ -38,6 +39,7 @@ def gridnet_step_pytorch(
                        recurrently for multiple iterations. Normalization is
                        also applied only within each block.
     :param eps: a small value to avoid division by zero.
+    :param normalize: if True (default), normalize activations in each block.
     """
     batch_size, m, n, k = init_activations.shape
     assert (
@@ -52,7 +54,7 @@ def gridnet_step_pytorch(
         bias.shape == residual_scale.shape
     ), f"{residual_scale.shape=} invalid for {bias.shape=}"
 
-    block_fn = inner_step_fn(block_size, eps, weight.device)
+    block_fn = inner_step_fn(block_size, eps, weight.device, normalize)
     output_blocks = []
     padded_init_acts = F.pad(init_activations, (1,) * 6)
     for a in range(1, m + 1, block_size):
@@ -101,7 +103,7 @@ def gridnet_step_pytorch(
 
 
 def inner_step_fn(
-    block_size: int, eps: float, device: torch.device
+    block_size: int, eps: float, device: torch.device, normalize: bool
 ) -> Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
     # Extract neighborhoods from a (block_size + 2) ^ 3 tensor.
     def index_in_block(i: int, j: int, k: int) -> int:
@@ -127,9 +129,12 @@ def inner_step_fn(
     ) -> torch.Tensor:
         batch_size = activations.shape[0]
         flattened = activations.flatten(1)  # [batch_size x (block_size + 2)^3]
-        mean = flattened.mean(1, keepdim=True)
-        std = flattened.std(1, correction=0, keepdim=True)
-        inputs = (flattened - mean) / (std + eps)
+        if normalize:
+            mean = flattened.mean(1, keepdim=True)
+            std = flattened.std(1, correction=0, keepdim=True)
+            inputs = (flattened - mean) / (std + eps)
+        else:
+            inputs = flattened
         patches = inputs.gather(
             1, input_index_tensor[None].repeat(batch_size, 1)
         ).reshape(batch_size, block_size**3, 3**3)

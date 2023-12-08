@@ -13,6 +13,7 @@ class GridnetCudaOp(torch.autograd.Function):
         inner_iters: int,
         block_size: int,
         eps: float,
+        normalize: bool,
     ):
         batch_size, m, n, k = init_activations.shape
         assert (
@@ -52,6 +53,7 @@ class GridnetCudaOp(torch.autograd.Function):
         ctx.inner_iters = inner_iters
         ctx.block_size = block_size
         ctx.eps = eps
+        ctx.normalize = normalize
         outputs = torch.empty_like(init_activations)
 
         gridnet_cuda.forward(
@@ -63,6 +65,7 @@ class GridnetCudaOp(torch.autograd.Function):
             inner_iters,
             block_size,
             eps,
+            normalize,
         )
         return outputs
 
@@ -86,12 +89,14 @@ class GridnetCudaOp(torch.autograd.Function):
             ctx.inner_iters,
             ctx.block_size,
             ctx.eps,
+            ctx.normalize,
         )
         return (
             weight_grad,
             bias_grad,
             residual_scale_grad,
             init_activations_grad,
+            None,
             None,
             None,
             None,

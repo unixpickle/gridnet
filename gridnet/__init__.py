@@ -24,12 +24,14 @@ class Gridnet(nn.Module):
         eps: float = 1e-5,
         init_scale: float = 1.0,
         residual_scale: float = 1.0,
+        normalize: bool = True,
     ):
         super().__init__()
         self.shape = shape
         self.inner_iterations = inner_iterations
         self.block_size = block_size
         self.eps = eps
+        self.normalize = normalize
         self.weight = nn.Parameter(
             torch.randn(3**3, *shape, device=device, dtype=dtype)
             * (init_scale / math.sqrt(27))
@@ -50,6 +52,7 @@ class Gridnet(nn.Module):
             inner_iterations=self.inner_iterations,
             block_size=self.block_size,
             eps=self.eps,
+            normalize=self.normalize,
         )
 
 
@@ -83,6 +86,7 @@ def gridnet_step(
     inner_iterations: int,
     block_size: int,
     eps: float = 1e-5,
+    normalize: bool = True,
 ) -> torch.Tensor:
     """
     Apply a forward pass of the model on an activations Tensor
@@ -109,6 +113,7 @@ def gridnet_step(
                        recurrently for multiple iterations. Normalization is
                        also applied only within each block.
     :param eps: a small value to avoid division by zero.
+    :param normalize: if True (default), normalize activations in each block.
     """
     if weight.device.type == "cuda":
         if GridnetCudaOp is None:
@@ -127,6 +132,7 @@ def gridnet_step(
                 inner_iterations,
                 block_size,
                 eps,
+                normalize,
             )
 
     return gridnet_step_pytorch(
@@ -137,4 +143,5 @@ def gridnet_step(
         inner_iterations,
         block_size,
         eps,
+        normalize,
     )

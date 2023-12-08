@@ -17,7 +17,8 @@ void gridnet_cuda_forward(
     torch::Tensor outActivations,
     uint innerIterations,
     uint blockSize,
-    float eps);
+    float eps,
+    bool normalize);
 
 void gridnet_cuda_backward(
     torch::Tensor weight,
@@ -31,7 +32,8 @@ void gridnet_cuda_backward(
     torch::Tensor activationsGradOut,
     uint innerIterations,
     uint blockSize,
-    float eps);
+    float eps,
+    bool normalize);
 
 void gridnet_forward(
     torch::Tensor weight,
@@ -41,7 +43,8 @@ void gridnet_forward(
     torch::Tensor outActivations,
     uint innerIterations,
     uint blockSize,
-    float eps)
+    float eps,
+    bool normalize)
 {
     CHECK_INPUT(weight);
     CHECK_INPUT(bias);
@@ -56,7 +59,8 @@ void gridnet_forward(
         outActivations,
         innerIterations,
         blockSize,
-        eps);
+        eps,
+        normalize);
 }
 
 void gridnet_backward(
@@ -71,7 +75,8 @@ void gridnet_backward(
     torch::Tensor activationsGradOut,
     uint innerIterations,
     uint blockSize,
-    float eps)
+    float eps,
+    bool normalize)
 {
     CHECK_INPUT(weight);
     CHECK_INPUT(bias);
@@ -93,7 +98,8 @@ void gridnet_backward(
         activationsGradOut,
         innerIterations,
         blockSize,
-        eps);
+        eps,
+        normalize);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
