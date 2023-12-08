@@ -30,11 +30,12 @@ class Gridnet(nn.Module):
         self.inner_iterations = inner_iterations
         self.block_size = block_size
         self.eps = eps
-        self.weight = torch.randn(3**3, *shape, device=device, dtype=dtype) * (
-            init_scale / math.sqrt(27)
+        self.weight = nn.Parameter(
+            torch.randn(3**3, *shape, device=device, dtype=dtype)
+            * (init_scale / math.sqrt(27))
         )
-        self.bias = torch.zeros(*shape, device=device, dtype=dtype)
-        self.residual_scale = (
+        self.bias = nn.Parameter(torch.zeros(*shape, device=device, dtype=dtype))
+        self.residual_scale = nn.Parameter(
             torch.ones(*shape, device=device, dtype=dtype) * residual_scale
         )
         self.device = device

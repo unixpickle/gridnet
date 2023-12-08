@@ -47,8 +47,8 @@ def read_log(log_path: str) -> LogData:
         test_acc=[],
     )
     expr = re.compile(
-        ".*step ([0-9]*): test_loss=([0-9\\.]*) test_acc=([0-9\\.]*)"
-        " train_loss=([0-9\\.]*) train_acc=([0-9\\.]*).*"
+        ".*step ([0-9]*): test_loss=([0-9\\.]*)( test_acc=([0-9\\.]*))?"
+        " train_loss=([0-9\\.]*)( train_acc=([0-9\\.]*))?.*"
     )
     with open(log_path, "r") as f:
         for line in f:
@@ -56,9 +56,9 @@ def read_log(log_path: str) -> LogData:
             if results:
                 data.steps.append(int(results[1]))
                 data.test_loss.append(float(results[2]))
-                data.test_acc.append(float(results[3]))
-                data.train_loss.append(float(results[4]))
-                data.train_acc.append(float(results[5]))
+                data.test_acc.append(float(results[4] or "0.0"))
+                data.train_loss.append(float(results[5]))
+                data.train_acc.append(float(results[7] or "0.0"))
     if not len(data.steps):
         raise RuntimeError(f"no lines found in file: {log_path}")
     return data

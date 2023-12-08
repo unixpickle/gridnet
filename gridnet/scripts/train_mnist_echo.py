@@ -1,13 +1,18 @@
+"""
+Simple test to see if a model can learn to copy its input.
+
+This _should_ be an easy task, but disappearing gradients might
+make it surprisingly difficult.
+"""
+
 import argparse
-from typing import Iterator
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import AdamW
-from torchvision import datasets, transforms
 
 from gridnet import Gridnet, Readout
+from gridnet.scripts.train_mnist import iterate_data
 
 
 class Model(nn.Module):
@@ -32,16 +37,17 @@ class Model(nn.Module):
             residual_scale=residual_scale,
             device=device,
         )
-        self.readout = Readout((32, 32, 32), out_channels=10, device=device)
+        self.readout = Readout((32, 32, 32), out_channels=28 * 28, device=device)
 
     def forward(self, batch: torch.Tensor):
-        batch = batch.reshape(-1, 28, 28)
+        chunk = batch.reshape(-1, 28, 28)
         init_acts = self.init_in[None].repeat(batch.shape[0], 1, 1, 1)
-        init_acts[:, 2:-2, 2:-2, 0] = batch
+        init_acts[:, 2:-2, 2:-2, 0] = chunk
         h = init_acts
         for _ in range(self.outer_iters):
             h = self.network(h)
-        return self.readout(h)
+        h = self.readout(h)
+        return h.reshape(batch.shape)
 
 
 def main():
@@ -77,12 +83,10 @@ def main():
     train_iter = iterate_data(args.batch_size, train=True)
     test_iter = iterate_data(args.batch_size, train=False)
     for i in range(args.max_iters):
-        inputs, targets = next(train_iter)
+        inputs, _ = next(train_iter)
         inputs = inputs.to(device)
-        targets = targets.to(device)
-        logits = model(inputs)
-        train_loss = F.cross_entropy(logits, targets)
-        train_acc = accuracy(logits, targets)
+        outputs = model(inputs)
+        train_loss = (inputs - outputs).pow(2).mean()
 
         # Empty the graph before using more memory.
         opt.zero_grad()
@@ -92,32 +96,12 @@ def main():
             inputs, targets = next(test_iter)
             inputs = inputs.to(device)
             targets = targets.to(device)
-            logits = model(inputs)
-            test_loss = F.cross_entropy(logits, targets)
-            test_acc = accuracy(logits, targets)
+            outputs = model(inputs)
+            test_loss = (inputs - outputs).pow(2).mean()
 
         opt.step()
 
-        print(
-            f"step {i}: test_loss={test_loss.item()} test_acc={test_acc} "
-            f"train_loss={train_loss} train_acc={train_acc}"
-        )
-
-
-def accuracy(logits: torch.Tensor, targets: torch.Tensor) -> float:
-    return (logits.argmax(-1) == targets).float().mean().item()
-
-
-def iterate_data(batch_size: int, train: bool) -> Iterator[torch.Tensor]:
-    transform = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-    )
-    dataset1 = datasets.MNIST(
-        "../data", train=train, download=True, transform=transform
-    )
-    loader = torch.utils.data.DataLoader(dataset1, batch_size=batch_size, shuffle=True)
-    while True:
-        yield from loader
+        print(f"step {i}: test_loss={test_loss.item()} train_loss={train_loss}")
 
 
 if __name__ == "__main__":
