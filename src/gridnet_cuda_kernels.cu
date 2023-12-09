@@ -65,31 +65,32 @@ __device__ __forceinline__ scalar_t reduce_mean(
 
 template <typename scalar_t>
 __device__ __forceinline__ scalar_t
+sigmoid(scalar_t x)
+{
+    bool negated = x > 0;
+    if (negated) {
+        x = -x;
+    }
+    float ex = __expf((float)x);
+    scalar_t sig = (scalar_t)(ex / (1.0 + ex));
+    if (negated) {
+        sig = 1 - sig;
+    }
+    return sig;
+}
+
+template <typename scalar_t>
+__device__ __forceinline__ scalar_t
 silu(scalar_t x)
 {
-    scalar_t sig;
-    if (x > 0) {
-        float ex = expf(-(float)x);
-        sig = (scalar_t)(1.0 - (ex / (1.0 + ex)));
-    } else {
-        float ex = expf((float)x);
-        sig = (scalar_t)(ex / (1.0 + ex));
-    }
-    return sig * x;
+    return sigmoid(x) * x;
 }
 
 template <typename scalar_t>
 __device__ __forceinline__ scalar_t
 silu_grad(scalar_t x)
 {
-    scalar_t sig;
-    if (x > 0) {
-        float ex = expf(-(float)x);
-        sig = (scalar_t)(1.0 - (ex / (1.0 + ex)));
-    } else {
-        float ex = expf((float)x);
-        sig = (scalar_t)(ex / (1.0 + ex));
-    }
+    scalar_t sig = sigmoid(x);
     //   d/dx x*sigmoid(x)
     // = sigmoid(x) + x*sigmoid(x)*(1-sigmoid(x))
     // = sigmoid(x) * (1 + x*(1-sigmoid(x)))
