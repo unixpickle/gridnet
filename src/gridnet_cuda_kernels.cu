@@ -1,3 +1,4 @@
+#include "activations.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <torch/extension.h>
@@ -63,41 +64,7 @@ __device__ __forceinline__ scalar_t reduce_mean(
     return reduce_sum(localSum, aggBuf, threadOffset, numThreads) / (scalar_t)numInputs;
 }
 
-template <typename scalar_t>
-__device__ __forceinline__ scalar_t
-sigmoid(scalar_t x)
-{
-    bool negated = x > 0;
-    if (negated) {
-        x = -x;
-    }
-    float ex = __expf((float)x);
-    scalar_t sig = (scalar_t)(ex / (1.0 + ex));
-    if (negated) {
-        sig = 1 - sig;
-    }
-    return sig;
-}
-
-template <typename scalar_t>
-__device__ __forceinline__ scalar_t
-silu(scalar_t x)
-{
-    return sigmoid(x) * x;
-}
-
-template <typename scalar_t>
-__device__ __forceinline__ scalar_t
-silu_grad(scalar_t x)
-{
-    scalar_t sig = sigmoid(x);
-    //   d/dx x*sigmoid(x)
-    // = sigmoid(x) + x*sigmoid(x)*(1-sigmoid(x))
-    // = sigmoid(x) * (1 + x*(1-sigmoid(x)))
-    return sig * (1 + x * (1 - sig));
-}
-
-template <typename scalar_t, bool normalize>
+template <typename scalar_t, typename Act, bool normalize>
 __global__ void __launch_bounds__(512, 1) gridnet_cuda_forward_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 4> weight,
     const torch::PackedTensorAccessor32<scalar_t, 3> bias,
@@ -113,6 +80,8 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_forward_kernel(
 
     // Temporary buffer used for hypercube sum reductions.
     __shared__ scalar_t aggBuf[1024];
+
+    static_assert(Activation<Act, scalar_t>::implemented);
 
     uint m = bias.size(0);
     uint n = bias.size(1);
@@ -186,7 +155,7 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_forward_kernel(
         }
 
         // Activation and residual connection.
-        scalar_t output = silu(dot) * localScale + localAct;
+        scalar_t output = Activation<Act, scalar_t>::forward(dot) * localScale + localAct;
 
         // Don't overwrite activations while dot products are
         // still being computed.
@@ -199,7 +168,7 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_forward_kernel(
     outActivations[batchIdx][blockZ * blockSize + threadIdx.z][blockY * blockSize + threadIdx.y][blockX * blockSize + threadIdx.x] = activations[paddedOffset];
 }
 
-template <typename scalar_t, uint iterationsBufferSize, bool normalize>
+template <typename scalar_t, typename Act, uint iterationsBufferSize, bool normalize>
 __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 4> weight,
     const torch::PackedTensorAccessor32<scalar_t, 3> bias,
@@ -226,6 +195,8 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
 
     // Temporary buffer used for hypercube sum reductions.
     __shared__ scalar_t aggBuf[1024];
+
+    static_assert(Activation<Act, scalar_t>::implemented);
 
     uint blockSize = blockDim.x;   // side-length of each block
     uint batchIdx = blockIdx.x;    // the index within the batch of this block
@@ -307,7 +278,7 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
         }
 
         // Activation and residual connection.
-        scalar_t output = silu(dot) * localScale + localAct;
+        scalar_t output = Activation<Act, scalar_t>::forward(dot) * localScale + localAct;
 
         // Don't overwrite activations while dot products are
         // still being computed.
@@ -356,8 +327,8 @@ __global__ void __launch_bounds__(512, 1) gridnet_cuda_backward_kernel(
         }
 
         // Outer grad for all other outputs.
-        localScaleGradAcc += silu(dot) * outGrad;
-        scalar_t innerGrad = silu_grad(dot) * outGrad * localScale;
+        localScaleGradAcc += Activation<Act, scalar_t>::forward(dot) * outGrad;
+        scalar_t innerGrad = Activation<Act, scalar_t>::backward(dot) * outGrad * localScale;
 
         // Gradients will flow to the mean and std
         // and then we will propagate those gradients
@@ -456,7 +427,8 @@ void gridnet_cuda_forward(
     uint innerIterations,
     uint blockSize,
     float eps,
-    bool normalize)
+    bool normalize,
+    std::string &activation)
 {
     const int batchSize = initActivations.size(0);
     const uint m = initActivations.size(1);
@@ -465,30 +437,38 @@ void gridnet_cuda_forward(
 
     const dim3 threads(blockSize, blockSize, blockSize);
     const dim3 blocks(batchSize, (m / blockSize) * (n / blockSize) * (k / blockSize));
-    if (normalize) {
-        AT_DISPATCH_FLOATING_TYPES(
-            weight.scalar_type(),
-            "gridnet_cuda_forward",
-            ([&] { gridnet_cuda_forward_kernel<scalar_t, true><<<blocks, threads>>>(
-                       weight.packed_accessor32<scalar_t, 4>(),
-                       bias.packed_accessor32<scalar_t, 3>(),
-                       scale.packed_accessor32<scalar_t, 3>(),
-                       initActivations.packed_accessor32<scalar_t, 4>(),
-                       outActivations.packed_accessor32<scalar_t, 4>(),
-                       innerIterations,
-                       eps); }));
-    } else {
-        AT_DISPATCH_FLOATING_TYPES(
-            weight.scalar_type(),
-            "gridnet_cuda_forward",
-            ([&] { gridnet_cuda_forward_kernel<scalar_t, false><<<blocks, threads>>>(
-                       weight.packed_accessor32<scalar_t, 4>(),
-                       bias.packed_accessor32<scalar_t, 3>(),
-                       scale.packed_accessor32<scalar_t, 3>(),
-                       initActivations.packed_accessor32<scalar_t, 4>(),
-                       outActivations.packed_accessor32<scalar_t, 4>(),
-                       innerIterations,
-                       eps); }));
+
+#define FORWARD_WITH_ACT(act)                                                                                                                                                                                                                                                                                                                    \
+    if (normalize) {                                                                                                                                                                                                                                                                                                                             \
+        AT_DISPATCH_FLOATING_TYPES(                                                                                                                                                                                                                                                                                                              \
+            weight.scalar_type(),                                                                                                                                                                                                                                                                                                                \
+            "gridnet_cuda_forward",                                                                                                                                                                                                                                                                                                              \
+            ([&] { gridnet_cuda_forward_kernel<scalar_t, act, true><<<blocks, threads>>>(                                                                                                                                                                                                                                                        \
+                       weight.packed_accessor32<scalar_t, 4>(),                                                                                                                                                                                                                                                                                  \
+                       bias.packed_accessor32<scalar_t, 3>(),                                                                                                                                                                                                                                                                                    \
+                       scale.packed_accessor32<scalar_t, 3>(),                                                                                                                                                                                                                                                                                   \
+                       initActivations.packed_accessor32<scalar_t, 4>(),                                                                                                                                                                                                                                                                         \
+                       outActivations.packed_accessor32<scalar_t, 4>(),                                                                                                                                                                                                                                                                          \
+                       innerIterations,                                                                                                                                                                                                                                                                                                          \
+                       eps); }));  \
+    } else {                                                                                                                                                                                                                                                                                                                                     \
+        AT_DISPATCH_FLOATING_TYPES(                                                                                                                                                                                                                                                                                                              \
+            weight.scalar_type(),                                                                                                                                                                                                                                                                                                                \
+            "gridnet_cuda_forward",                                                                                                                                                                                                                                                                                                              \
+            ([&] { gridnet_cuda_forward_kernel<scalar_t, act, false><<<blocks, threads>>>(                                                                                                                                                                                                                                                       \
+                       weight.packed_accessor32<scalar_t, 4>(),                                                                                                                                                                                                                                                                                  \
+                       bias.packed_accessor32<scalar_t, 3>(),                                                                                                                                                                                                                                                                                    \
+                       scale.packed_accessor32<scalar_t, 3>(),                                                                                                                                                                                                                                                                                   \
+                       initActivations.packed_accessor32<scalar_t, 4>(),                                                                                                                                                                                                                                                                         \
+                       outActivations.packed_accessor32<scalar_t, 4>(),                                                                                                                                                                                                                                                                          \
+                       innerIterations,                                                                                                                                                                                                                                                                                                          \
+                       eps); })); \
+    }
+
+    if (activation == "relu") {
+        FORWARD_WITH_ACT(ReLU);
+    } else if (activation == "silu") {
+        FORWARD_WITH_ACT(SiLU);
     }
 }
 
@@ -505,7 +485,8 @@ void gridnet_cuda_backward(
     uint innerIterations,
     uint blockSize,
     float eps,
-    bool normalize)
+    bool normalize,
+    std::string &activation)
 {
     const int batchSize = initActivations.size(0);
     const uint m = initActivations.size(1);
@@ -516,41 +497,48 @@ void gridnet_cuda_backward(
     const dim3 blocks(batchSize, (m / blockSize) * (n / blockSize) * (k / blockSize));
 
     // Macro for instantiating many different template variations.
-#define BACKWARD(inner, norm) AT_DISPATCH_FLOATING_TYPES(                            \
-    weight.scalar_type(),                                                            \
-    "gridnet_cuda_backward",                                                         \
-    ([&] { gridnet_cuda_backward_kernel<scalar_t, inner, norm><<<blocks, threads>>>( \
-               weight.packed_accessor32<scalar_t, 4>(),                              \
-               bias.packed_accessor32<scalar_t, 3>(),                                \
-               scale.packed_accessor32<scalar_t, 3>(),                               \
-               initActivations.packed_accessor32<scalar_t, 4>(),                     \
-               outGrads.packed_accessor32<scalar_t, 4>(),                            \
-               weightGradOut.packed_accessor32<scalar_t, 4>(),                       \
-               biasGradOut.packed_accessor32<scalar_t, 3>(),                         \
-               scaleGradOut.packed_accessor32<scalar_t, 3>(),                        \
-               activationsGradOut.packed_accessor32<scalar_t, 4>(),                  \
-               innerIterations,                                                      \
+#define BACKWARD(inner, norm, act) AT_DISPATCH_FLOATING_TYPES(                            \
+    weight.scalar_type(),                                                                 \
+    "gridnet_cuda_backward",                                                              \
+    ([&] { gridnet_cuda_backward_kernel<scalar_t, act, inner, norm><<<blocks, threads>>>( \
+               weight.packed_accessor32<scalar_t, 4>(),                                   \
+               bias.packed_accessor32<scalar_t, 3>(),                                     \
+               scale.packed_accessor32<scalar_t, 3>(),                                    \
+               initActivations.packed_accessor32<scalar_t, 4>(),                          \
+               outGrads.packed_accessor32<scalar_t, 4>(),                                 \
+               weightGradOut.packed_accessor32<scalar_t, 4>(),                            \
+               biasGradOut.packed_accessor32<scalar_t, 3>(),                              \
+               scaleGradOut.packed_accessor32<scalar_t, 3>(),                             \
+               activationsGradOut.packed_accessor32<scalar_t, 4>(),                       \
+               innerIterations,                                                           \
                eps); }));
 
-    if (normalize) {
-        if (innerIterations <= 8) {
-            BACKWARD(8, true);
-        } else if (innerIterations <= 16) {
-            BACKWARD(16, true);
-        } else if (innerIterations <= 32) {
-            BACKWARD(32, true);
-        } else {
-            throw std::runtime_error("cannot backprop through more than 32 inner iterations");
-        }
-    } else {
-        if (innerIterations <= 8) {
-            BACKWARD(8, false);
-        } else if (innerIterations <= 16) {
-            BACKWARD(16, false);
-        } else if (innerIterations <= 32) {
-            BACKWARD(32, false);
-        } else {
-            throw std::runtime_error("cannot backprop through more than 32 inner iterations");
-        }
+#define BACKWARD_FOR_ACT(act)                                                                  \
+    if (normalize) {                                                                           \
+        if (innerIterations <= 8) {                                                            \
+            BACKWARD(8, true, act);                                                            \
+        } else if (innerIterations <= 16) {                                                    \
+            BACKWARD(16, true, act);                                                           \
+        } else if (innerIterations <= 32) {                                                    \
+            BACKWARD(32, true, act);                                                           \
+        } else {                                                                               \
+            throw std::runtime_error("cannot backprop through more than 32 inner iterations"); \
+        }                                                                                      \
+    } else {                                                                                   \
+        if (innerIterations <= 8) {                                                            \
+            BACKWARD(8, false, act);                                                           \
+        } else if (innerIterations <= 16) {                                                    \
+            BACKWARD(16, false, act);                                                          \
+        } else if (innerIterations <= 32) {                                                    \
+            BACKWARD(32, false, act);                                                          \
+        } else {                                                                               \
+            throw std::runtime_error("cannot backprop through more than 32 inner iterations"); \
+        }                                                                                      \
+    }
+
+    if (activation == "relu") {
+        BACKWARD_FOR_ACT(ReLU);
+    } else if (activation == "silu") {
+        BACKWARD_FOR_ACT(SiLU);
     }
 }

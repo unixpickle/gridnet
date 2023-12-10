@@ -31,7 +31,7 @@ def test_forward_equivalence(
         weights, biases, scales, inputs, 2, block_size, eps, normalize
     )
     actual = GridnetCudaOp.apply(
-        weights, biases, scales, inputs, 2, block_size, eps, normalize
+        weights, biases, scales, inputs, 2, block_size, eps, normalize, "silu"
     )
     assert (actual - expected).abs().max().item() < 2e-4
 
@@ -66,7 +66,15 @@ def test_grad_equivalence(
         expected, (scales, biases, weights, inputs), out_grad
     )
     actual = GridnetCudaOp.apply(
-        weights, biases, scales, inputs, inner_iters, block_size, eps, normalize
+        weights,
+        biases,
+        scales,
+        inputs,
+        inner_iters,
+        block_size,
+        eps,
+        normalize,
+        "silu",
     )
     actual_grads = torch.autograd.grad(
         actual, (scales, biases, weights, inputs), out_grad
@@ -89,7 +97,7 @@ def test_forward_benchmark(benchmark):
     torch.cuda.synchronize()
 
     def fn():
-        GridnetCudaOp.apply(weights, biases, scales, inputs, 10, 8, 1e-5, True)
+        GridnetCudaOp.apply(weights, biases, scales, inputs, 10, 8, 1e-5, True, "silu")
         torch.cuda.synchronize()
 
     benchmark(fn)
@@ -106,7 +114,9 @@ def test_backward_benchmark(benchmark):
     out_grad = torch.randn_like(inputs)
 
     def fn():
-        out = GridnetCudaOp.apply(weights, biases, scales, inputs, 10, 8, 1e-5, True)
+        out = GridnetCudaOp.apply(
+            weights, biases, scales, inputs, 10, 8, 1e-5, True, "silu"
+        )
         _grads = torch.autograd.grad(out, (inputs, weights, biases, scales), out_grad)
         torch.cuda.synchronize()
 

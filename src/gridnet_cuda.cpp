@@ -18,7 +18,8 @@ void gridnet_cuda_forward(
     uint innerIterations,
     uint blockSize,
     float eps,
-    bool normalize);
+    bool normalize,
+    std::string &activation);
 
 void gridnet_cuda_backward(
     torch::Tensor weight,
@@ -33,7 +34,8 @@ void gridnet_cuda_backward(
     uint innerIterations,
     uint blockSize,
     float eps,
-    bool normalize);
+    bool normalize,
+    std::string &activation);
 
 void gridnet_forward(
     torch::Tensor weight,
@@ -44,13 +46,17 @@ void gridnet_forward(
     uint innerIterations,
     uint blockSize,
     float eps,
-    bool normalize)
+    bool normalize,
+    std::string &activation)
 {
     CHECK_INPUT(weight);
     CHECK_INPUT(bias);
     CHECK_INPUT(scale);
     CHECK_INPUT(initActivations);
     CHECK_INPUT(outActivations);
+    if (activation != "relu" && activation != "silu") {
+        throw std::runtime_error("unknown activation function: " + activation);
+    }
     gridnet_cuda_forward(
         weight,
         bias,
@@ -60,7 +66,8 @@ void gridnet_forward(
         innerIterations,
         blockSize,
         eps,
-        normalize);
+        normalize,
+        activation);
 }
 
 void gridnet_backward(
@@ -76,7 +83,8 @@ void gridnet_backward(
     uint innerIterations,
     uint blockSize,
     float eps,
-    bool normalize)
+    bool normalize,
+    std::string &activation)
 {
     CHECK_INPUT(weight);
     CHECK_INPUT(bias);
@@ -86,6 +94,9 @@ void gridnet_backward(
     CHECK_INPUT(weightGradOut);
     CHECK_INPUT(biasGradOut);
     CHECK_INPUT(activationsGradOut);
+    if (activation != "relu" && activation != "silu") {
+        throw std::runtime_error("unknown activation function: " + activation);
+    }
     gridnet_cuda_backward(
         weight,
         bias,
@@ -99,7 +110,8 @@ void gridnet_backward(
         innerIterations,
         blockSize,
         eps,
-        normalize);
+        normalize,
+        activation);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

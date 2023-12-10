@@ -133,6 +133,7 @@ def gridnet_step(
                 block_size,
                 eps,
                 normalize,
+                "silu",
             )
 
     return gridnet_step_pytorch(
