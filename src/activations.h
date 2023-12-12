@@ -1,4 +1,5 @@
 class ReLU;
+class LeakyReLU;
 class SiLU;
 
 template <typename scalar_t>
@@ -52,6 +53,31 @@ public:
     {
         if (x < 0) {
             return 0.0;
+        } else {
+            return 1.0;
+        }
+    }
+};
+
+template <typename scalar_t>
+class Activation<LeakyReLU, scalar_t>
+{
+public:
+    static const bool implemented = true;
+
+    static __device__ __forceinline__ scalar_t forward(scalar_t x)
+    {
+        if (x < 0) {
+            return 0.01 * x;
+        } else {
+            return x;
+        }
+    }
+
+    static __device__ __forceinline__ scalar_t backward(scalar_t x)
+    {
+        if (x < 0) {
+            return 0.01;
         } else {
             return 1.0;
         }

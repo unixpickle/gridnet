@@ -1,7 +1,9 @@
-from typing import Callable
+from typing import Callable, Literal
 
 import torch
 import torch.nn.functional as F
+
+ActivationFn = Literal["silu", "relu"]
 
 
 def gridnet_step_pytorch(
@@ -13,6 +15,7 @@ def gridnet_step_pytorch(
     block_size: int,
     eps: float = 1e-5,
     normalize: bool = True,
+    activation: ActivationFn = "silu",
 ) -> torch.Tensor:
     """
     Apply a forward pass of the model on an activations Tensor
@@ -40,6 +43,7 @@ def gridnet_step_pytorch(
                        also applied only within each block.
     :param eps: a small value to avoid division by zero.
     :param normalize: if True (default), normalize activations in each block.
+    :param activation: the activation function to apply.
     """
     batch_size, m, n, k = init_activations.shape
     assert (
@@ -54,7 +58,7 @@ def gridnet_step_pytorch(
         bias.shape == residual_scale.shape
     ), f"{residual_scale.shape=} invalid for {bias.shape=}"
 
-    block_fn = inner_step_fn(block_size, eps, weight.device, normalize)
+    block_fn = inner_step_fn(block_size, eps, weight.device, normalize, activation)
     output_blocks = []
     padded_init_acts = F.pad(init_activations, (1,) * 6)
     for a in range(1, m + 1, block_size):
@@ -103,7 +107,11 @@ def gridnet_step_pytorch(
 
 
 def inner_step_fn(
-    block_size: int, eps: float, device: torch.device, normalize: bool
+    block_size: int,
+    eps: float,
+    device: torch.device,
+    normalize: bool,
+    activation: ActivationFn,
 ) -> Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
     # Extract neighborhoods from a (block_size + 2) ^ 3 tensor.
     def index_in_block(i: int, j: int, k: int) -> int:
@@ -139,7 +147,14 @@ def inner_step_fn(
             1, input_index_tensor[None].repeat(batch_size, 1)
         ).reshape(batch_size, block_size**3, 3**3)
         results = (patches * weight.flatten(1).t()).sum(-1) + bias.flatten()
-        results = F.silu(results)
+        if activation == "silu":
+            results = F.silu(results)
+        elif activation == "relu":
+            results = F.relu(results)
+        elif activation == "leaky_relu":
+            results = F.leaky_relu(results)
+        else:
+            raise ValueError(f"unknown activation: {activation}")
         results = results * scale.flatten()
         results = results.reshape(-1, block_size, block_size, block_size)
         results = F.pad(results, (1, 1, 1, 1, 1, 1))

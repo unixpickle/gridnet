@@ -8,6 +8,7 @@ from torch.optim import AdamW
 from torchvision import datasets, transforms
 
 from gridnet import Gridnet, Readout
+from gridnet.backend_torch import ActivationFn
 
 
 class Model(nn.Module):
@@ -18,6 +19,7 @@ class Model(nn.Module):
         outer_iters: int,
         init_scale: float,
         residual_scale: float,
+        activation: ActivationFn,
         device: torch.device,
     ):
         super().__init__()
@@ -32,6 +34,7 @@ class Model(nn.Module):
             residual_scale=residual_scale,
             device=device,
             normalize=False,
+            activation=activation,
         )
         self.norm = nn.LayerNorm((32,) * 3, device=device)
         self.readout = Readout((32, 32, 32), out_channels=10, device=device)
@@ -53,6 +56,7 @@ def main():
     parser.add_argument("--weight_decay", type=float, default=1e-3)
     parser.add_argument("--init_scale", type=float, default=1.0)
     parser.add_argument("--residual_scale", type=float, default=1.0)
+    parser.add_argument("--activation", type=str, default="silu")
     parser.add_argument("--max_iters", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--inner_iters", type=int, default=1)
@@ -69,6 +73,7 @@ def main():
         outer_iters=args.outer_iters,
         init_scale=args.init_scale,
         residual_scale=args.residual_scale,
+        activation=args.activation,
         device=device,
     )
     opt = AdamW(

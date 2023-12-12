@@ -5,7 +5,7 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-from gridnet.backend_torch import gridnet_step_pytorch
+from gridnet.backend_torch import ActivationFn, gridnet_step_pytorch
 
 try:
     from .backend_cuda import GridnetCudaOp
@@ -25,6 +25,7 @@ class Gridnet(nn.Module):
         init_scale: float = 1.0,
         residual_scale: float = 1.0,
         normalize: bool = True,
+        activation: ActivationFn = "silu",
     ):
         super().__init__()
         self.shape = shape
@@ -32,6 +33,7 @@ class Gridnet(nn.Module):
         self.block_size = block_size
         self.eps = eps
         self.normalize = normalize
+        self.activation = activation
         self.weight = nn.Parameter(
             torch.randn(3**3, *shape, device=device, dtype=dtype)
             * (init_scale / math.sqrt(27))
@@ -53,6 +55,7 @@ class Gridnet(nn.Module):
             block_size=self.block_size,
             eps=self.eps,
             normalize=self.normalize,
+            activation=self.activation,
         )
 
 
@@ -87,6 +90,7 @@ def gridnet_step(
     block_size: int,
     eps: float = 1e-5,
     normalize: bool = True,
+    activation: ActivationFn = "silu",
 ) -> torch.Tensor:
     """
     Apply a forward pass of the model on an activations Tensor
@@ -114,6 +118,7 @@ def gridnet_step(
                        also applied only within each block.
     :param eps: a small value to avoid division by zero.
     :param normalize: if True (default), normalize activations in each block.
+    :param activation: the activation function to apply.
     """
     if weight.device.type == "cuda":
         if GridnetCudaOp is None:
@@ -133,7 +138,7 @@ def gridnet_step(
                 block_size,
                 eps,
                 normalize,
-                "silu",
+                activation,
             )
 
     return gridnet_step_pytorch(
@@ -145,4 +150,5 @@ def gridnet_step(
         block_size,
         eps,
         normalize,
+        activation,
     )

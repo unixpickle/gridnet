@@ -467,6 +467,8 @@ void gridnet_cuda_forward(
 
     if (activation == "relu") {
         FORWARD_WITH_ACT(ReLU);
+    } else if (activation == "leaky_relu") {
+        FORWARD_WITH_ACT(LeakyReLU);
     } else if (activation == "silu") {
         FORWARD_WITH_ACT(SiLU);
     }
@@ -538,6 +540,8 @@ void gridnet_cuda_backward(
 
     if (activation == "relu") {
         BACKWARD_FOR_ACT(ReLU);
+    } else if (activation == "leaky_relu") {
+        BACKWARD_FOR_ACT(LeakyReLU);
     } else if (activation == "silu") {
         BACKWARD_FOR_ACT(SiLU);
     }

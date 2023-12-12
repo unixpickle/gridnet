@@ -54,7 +54,7 @@ void gridnet_forward(
     CHECK_INPUT(scale);
     CHECK_INPUT(initActivations);
     CHECK_INPUT(outActivations);
-    if (activation != "relu" && activation != "silu") {
+    if (activation != "relu" && activation != "leaky_relu" && activation != "silu") {
         throw std::runtime_error("unknown activation function: " + activation);
     }
     gridnet_cuda_forward(
@@ -94,7 +94,7 @@ void gridnet_backward(
     CHECK_INPUT(weightGradOut);
     CHECK_INPUT(biasGradOut);
     CHECK_INPUT(activationsGradOut);
-    if (activation != "relu" && activation != "silu") {
+    if (activation != "relu" && activation != "leaky_relu" && activation != "silu") {
         throw std::runtime_error("unknown activation function: " + activation);
     }
     gridnet_cuda_backward(
