@@ -75,7 +75,7 @@ class Readout(nn.Module):
         self.proj = nn.Linear(size, out_channels, device=device, dtype=dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        h = x[:, :, :, -self.output_layers].flatten(1)
+        h = x[:, :, :, -self.output_layers :].flatten(1)
         h = self.norm(h)
         h = self.proj(h)
         return h
