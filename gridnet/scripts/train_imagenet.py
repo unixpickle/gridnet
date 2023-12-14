@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import os
+import sys
 from typing import Iterator
 
 import torch
@@ -19,13 +20,17 @@ class Model(nn.Module):
         *,
         inner_iters: int,
         outer_iters: int,
+        outer_residual: bool,
         init_scale: float,
         residual_scale: float,
+        emb_channels: int,
         activation: ActivationFn,
         device: torch.device,
     ):
         super().__init__()
         self.outer_iters = outer_iters
+        self.outer_residual = outer_residual
+        self.emb_channels = emb_channels
         self.device = device
         self.init_in = nn.Parameter(torch.randn(64, 64, 64, device=device))
         self.network = Gridnet(
@@ -38,17 +43,25 @@ class Model(nn.Module):
             normalize=False,
             activation=activation,
         )
-        self.patch_emb = nn.Conv2d(3, 8, kernel_size=4, stride=4, device=device)
+        self.patch_emb = nn.Conv2d(
+            3, emb_channels, kernel_size=4, stride=4, device=device
+        )
         self.norm = nn.LayerNorm((64,) * 3, device=device)
         self.readout = Readout((64, 64, 64), out_channels=1000, device=device)
 
     def forward(self, images: torch.Tensor):
         init_acts = self.init_in[None].repeat(images.shape[0], 1, 1, 1)
-        init_acts[:, :, :, :8] = self.patch_emb(images).permute(0, 2, 3, 1)
+        init_acts[:, :, :, : self.emb_channels] = self.patch_emb(images).permute(
+            0, 2, 3, 1
+        )
         h = init_acts
         for _ in range(self.outer_iters):
-            h = self.network(h)
-            h = self.norm(h)
+            if self.outer_residual:
+                norm_h = self.norm(h)
+                h = h + (self.network(norm_h) - norm_h)
+            else:
+                h = self.network(h)
+                h = self.norm(h)
         return self.readout(h)
 
 
@@ -62,10 +75,14 @@ def main():
     parser.add_argument("--init_scale", type=float, default=1.0)
     parser.add_argument("--residual_scale", type=float, default=0.5)
     parser.add_argument("--activation", type=str, default="leaky_relu")
+    parser.add_argument("--emb_channels", type=int, default=8)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--inner_iters", type=int, default=8)
     parser.add_argument("--outer_iters", type=int, default=12)
+    parser.add_argument("--outer_residual", action="store_true")
     args = parser.parse_args()
+
+    print("Command-line args:", sys.argv[1:])
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -75,8 +92,10 @@ def main():
     model = Model(
         inner_iters=args.inner_iters,
         outer_iters=args.outer_iters,
+        outer_residual=args.outer_residual,
         init_scale=args.init_scale,
         residual_scale=args.residual_scale,
+        emb_channels=args.emb_channels,
         activation=args.activation,
         device=device,
     )
@@ -156,7 +175,9 @@ def iterate_data(batch_size: int, dir_path: str, train: bool) -> Iterator[torch.
         ]
     )
     dataset = datasets.ImageFolder(dir_path, is_valid_file=file_checker, transform=xf)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    loader = torch.utils.data.DataLoader(
+        dataset, batch_size=batch_size, shuffle=True, num_workers=1
+    )
     while True:
         yield from loader
 
