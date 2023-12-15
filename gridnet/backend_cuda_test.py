@@ -3,7 +3,7 @@ from typing import Tuple
 import pytest
 import torch
 
-from gridnet.backend_torch import gridnet_step_pytorch
+from gridnet.backend_torch import gated_gridnet_step_pytorch, gridnet_step_pytorch
 
 
 @pytest.mark.parametrize(
@@ -32,6 +32,28 @@ def test_forward_equivalence(
     )
     actual = GridnetCudaOp.apply(
         weights, biases, scales, inputs, 2, block_size, eps, normalize, "silu"
+    )
+    assert (actual - expected).abs().max().item() < 2e-4
+
+
+@pytest.mark.parametrize(
+    "shape,block_size",
+    (
+        ((16, 16, 16), 8),
+        ((32, 64, 128), 8),
+        ((32, 64, 128), 4),
+    ),
+)
+def test_forward_equivalence_gated(shape: Tuple[int, int, int], block_size: int):
+    # Import must come after `import torch` to avoid linking issues
+    from gridnet.backend_cuda import GatedGridnetCudaOp
+
+    inputs = torch.randn(2, *shape).cuda()
+    weights = torch.randn(3**3, 2, *shape).cuda()
+    biases = torch.randn(2, *shape).cuda()
+    expected = gated_gridnet_step_pytorch(weights, biases, inputs, 2, block_size)
+    actual = GatedGridnetCudaOp.apply(
+        weights, biases, inputs, 2, block_size, "leaky_relu"
     )
     assert (actual - expected).abs().max().item() < 2e-4
 

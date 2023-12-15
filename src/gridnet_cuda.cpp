@@ -37,6 +37,27 @@ void gridnet_cuda_backward(
     bool normalize,
     std::string &activation);
 
+void gated_gridnet_cuda_forward(
+    torch::Tensor weight,
+    torch::Tensor bias,
+    torch::Tensor initActivations,
+    torch::Tensor outActivations,
+    uint innerIterations,
+    uint blockSize,
+    std::string &activation);
+
+void gated_gridnet_cuda_backward(
+    torch::Tensor weight,
+    torch::Tensor bias,
+    torch::Tensor initActivations,
+    torch::Tensor outGrads,
+    torch::Tensor weightGradOut,
+    torch::Tensor biasGradOut,
+    torch::Tensor activationsGradOut,
+    uint innerIterations,
+    uint blockSize,
+    std::string &activation);
+
 void gridnet_forward(
     torch::Tensor weight,
     torch::Tensor bias,
@@ -93,6 +114,7 @@ void gridnet_backward(
     CHECK_INPUT(outGrads);
     CHECK_INPUT(weightGradOut);
     CHECK_INPUT(biasGradOut);
+    CHECK_INPUT(scaleGradOut);
     CHECK_INPUT(activationsGradOut);
     if (activation != "relu" && activation != "leaky_relu" && activation != "silu") {
         throw std::runtime_error("unknown activation function: " + activation);
@@ -114,8 +136,71 @@ void gridnet_backward(
         activation);
 }
 
+void gated_gridnet_forward(
+    torch::Tensor weight,
+    torch::Tensor bias,
+    torch::Tensor initActivations,
+    torch::Tensor outActivations,
+    uint innerIterations,
+    uint blockSize,
+    std::string &activation)
+{
+    CHECK_INPUT(weight);
+    CHECK_INPUT(bias);
+    CHECK_INPUT(initActivations);
+    CHECK_INPUT(outActivations);
+    if (activation != "relu" && activation != "leaky_relu" && activation != "silu") {
+        throw std::runtime_error("unknown activation function: " + activation);
+    }
+    gated_gridnet_cuda_forward(
+        weight,
+        bias,
+        initActivations,
+        outActivations,
+        innerIterations,
+        blockSize,
+        activation);
+}
+
+void gated_gridnet_backward(
+    torch::Tensor weight,
+    torch::Tensor bias,
+    torch::Tensor initActivations,
+    torch::Tensor outGrads,
+    torch::Tensor weightGradOut,
+    torch::Tensor biasGradOut,
+    torch::Tensor activationsGradOut,
+    uint innerIterations,
+    uint blockSize,
+    std::string &activation)
+{
+    CHECK_INPUT(weight);
+    CHECK_INPUT(bias);
+    CHECK_INPUT(initActivations);
+    CHECK_INPUT(outGrads);
+    CHECK_INPUT(weightGradOut);
+    CHECK_INPUT(biasGradOut);
+    CHECK_INPUT(activationsGradOut);
+    if (activation != "relu" && activation != "leaky_relu" && activation != "silu") {
+        throw std::runtime_error("unknown activation function: " + activation);
+    }
+    gated_gridnet_cuda_backward(
+        weight,
+        bias,
+        initActivations,
+        outGrads,
+        weightGradOut,
+        biasGradOut,
+        activationsGradOut,
+        innerIterations,
+        blockSize,
+        activation);
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("forward", &gridnet_forward, "Gridnet forward (CUDA)");
     m.def("backward", &gridnet_backward, "Gridnet backward (CUDA)");
+    m.def("forward_gated", &gated_gridnet_forward, "Gated gridnet forward (CUDA)");
+    m.def("backward_gated", &gated_gridnet_backward, "Gated gridnet backward (CUDA)");
 }
