@@ -254,7 +254,7 @@ def gated_inner_step_fn(
             1
         ].flatten()
         new_values = apply_activation(activation, pre_act)
-        gate_values = F.sigmoid(gate_pre_act)
+        gate_values = torch.sigmoid(gate_pre_act)
         results = (
             gate_values * activations[:, 1:-1, 1:-1, 1:-1].flatten(1)
             + (1 - gate_values) * new_values

@@ -168,7 +168,7 @@ class GatedGridnetCudaOp(torch.autograd.Function):
         weight_grad = torch.zeros_like(weight)
         bias_grad = torch.zeros_like(bias)
         init_activations_grad = torch.zeros_like(init_activations)
-        gridnet_cuda.backward(
+        gridnet_cuda.backward_gated(
             weight,
             bias,
             init_activations,
