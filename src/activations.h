@@ -1,6 +1,7 @@
 class ReLU;
 class LeakyReLU;
 class SiLU;
+class Tanh;
 
 template <typename scalar_t>
 __device__ __forceinline__ scalar_t
@@ -102,5 +103,23 @@ public:
         // = sigmoid(x) + x*sigmoid(x)*(1-sigmoid(x))
         // = sigmoid(x) * (1 + x*(1-sigmoid(x)))
         return sig * (1 + x * (1 - sig));
+    }
+};
+
+template <typename scalar_t>
+class Activation<Tanh, scalar_t>
+{
+public:
+    static const bool implemented = true;
+
+    static __device__ __forceinline__ scalar_t forward(scalar_t x)
+    {
+        return 2 * sigmoid(2 * x) - 1;
+    }
+
+    static __device__ __forceinline__ scalar_t backward(scalar_t x)
+    {
+        scalar_t s = sigmoid(2 * x);
+        return 4 * s * (1 - s);
     }
 };

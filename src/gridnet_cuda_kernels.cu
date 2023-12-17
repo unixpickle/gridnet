@@ -786,6 +786,8 @@ void gridnet_cuda_forward(
         FORWARD_WITH_ACT(LeakyReLU);
     } else if (activation == "silu") {
         FORWARD_WITH_ACT(SiLU);
+    } else if (activation == "tanh") {
+        FORWARD_WITH_ACT(Tanh);
     }
 }
 
@@ -859,6 +861,8 @@ void gridnet_cuda_backward(
         BACKWARD_FOR_ACT(LeakyReLU);
     } else if (activation == "silu") {
         BACKWARD_FOR_ACT(SiLU);
+    } else if (activation == "tanh") {
+        BACKWARD_FOR_ACT(Tanh);
     }
 }
 
@@ -896,6 +900,8 @@ void gated_gridnet_cuda_forward(
         GATED_FORWARD_WITH_ACT(LeakyReLU);
     } else if (activation == "silu") {
         GATED_FORWARD_WITH_ACT(SiLU);
+    } else if (activation == "tanh") {
+        GATED_FORWARD_WITH_ACT(Tanh);
     }
 }
 
@@ -950,5 +956,7 @@ void gated_gridnet_cuda_backward(
         GATED_BACKWARD_FOR_ACT(LeakyReLU);
     } else if (activation == "silu") {
         GATED_BACKWARD_FOR_ACT(SiLU);
+    } else if (activation == "tanh") {
+        GATED_BACKWARD_FOR_ACT(Tanh);
     }
 }

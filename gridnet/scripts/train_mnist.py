@@ -1,4 +1,5 @@
 import argparse
+import sys
 from typing import Iterator
 
 import torch
@@ -7,7 +8,7 @@ import torch.nn.functional as F
 from torch.optim import AdamW
 from torchvision import datasets, transforms
 
-from gridnet import Gridnet, Readout
+from gridnet import GatedGridnet, Gridnet, Readout
 from gridnet.backend_torch import ActivationFn
 
 
@@ -20,23 +21,38 @@ class Model(nn.Module):
         init_scale: float,
         residual_scale: float,
         activation: ActivationFn,
+        gated: bool,
+        remember_bias: float,
         device: torch.device,
     ):
         super().__init__()
         self.outer_iters = outer_iters
         self.device = device
         self.init_in = nn.Parameter(torch.randn(32, 32, 32, device=device))
-        self.network = Gridnet(
-            (32, 32, 32),
-            inner_iters,
-            8,
-            init_scale=init_scale,
-            residual_scale=residual_scale,
-            device=device,
-            normalize=False,
-            activation=activation,
-        )
-        self.norm = nn.LayerNorm((32,) * 3, device=device)
+        if gated:
+            self.network = GatedGridnet(
+                (32, 32, 32),
+                inner_iters,
+                8,
+                init_scale=init_scale,
+                device=device,
+                activation=activation,
+            )
+            with torch.no_grad():
+                self.network.bias[1].fill_(remember_bias)
+            self.norm = nn.Identity()
+        else:
+            self.network = Gridnet(
+                (32, 32, 32),
+                inner_iters,
+                8,
+                init_scale=init_scale,
+                residual_scale=residual_scale,
+                device=device,
+                normalize=False,
+                activation=activation,
+            )
+            self.norm = nn.LayerNorm((32,) * 3, device=device)
         self.readout = Readout((32, 32, 32), out_channels=10, device=device)
 
     def forward(self, batch: torch.Tensor):
@@ -61,6 +77,8 @@ def main():
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--inner_iters", type=int, default=1)
     parser.add_argument("--outer_iters", type=int, default=64)
+    parser.add_argument("--gated", action="store_true")
+    parser.add_argument("--remember_bias", type=float, default=2.0)
     args = parser.parse_args()
 
     if torch.cuda.is_available():
@@ -68,12 +86,16 @@ def main():
     else:
         device = torch.device("cpu")
 
+    print("arguments:", sys.argv)
+
     model = Model(
         inner_iters=args.inner_iters,
         outer_iters=args.outer_iters,
         init_scale=args.init_scale,
         residual_scale=args.residual_scale,
         activation=args.activation,
+        gated=args.gated,
+        remember_bias=args.remember_bias,
         device=device,
     )
     opt = AdamW(

@@ -148,7 +148,7 @@ def gated_gridnet_step_pytorch(
     init_activations: torch.Tensor,
     inner_iterations: int,
     block_size: int,
-    activation: ActivationFn = "leaky_relu",
+    activation: ActivationFn = "tanh",
 ) -> torch.Tensor:
     """
     Apply a forward pass of the gated version of the model on an
@@ -274,6 +274,8 @@ def apply_activation(activation: ActivationFn, x: torch.Tensor) -> torch.Tensor:
         return F.relu(x)
     elif activation == "leaky_relu":
         return F.leaky_relu(x)
+    elif activation == "tanh":
+        return torch.tanh(x)
     else:
         raise ValueError(f"unknown activation: {activation}")
 

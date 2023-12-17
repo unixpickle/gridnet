@@ -51,10 +51,10 @@ def test_forward_equivalence_gated(shape: Tuple[int, int, int], block_size: int)
     inputs = torch.randn(2, *shape).cuda()
     weights = torch.randn(3**3, 2, *shape).cuda()
     biases = torch.randn(2, *shape).cuda()
-    expected = gated_gridnet_step_pytorch(weights, biases, inputs, 2, block_size)
-    actual = GatedGridnetCudaOp.apply(
-        weights, biases, inputs, 2, block_size, "leaky_relu"
+    expected = gated_gridnet_step_pytorch(
+        weights, biases, inputs, 2, block_size, activation="tanh"
     )
+    actual = GatedGridnetCudaOp.apply(weights, biases, inputs, 2, block_size, "tanh")
     assert (actual - expected).abs().max().item() < 2e-4
 
 
@@ -131,7 +131,7 @@ def test_grad_equivalence_gated(
     )
     biases = torch.randn(2, *shape, dtype=torch.float64).cuda().requires_grad_(True)
     expected = gated_gridnet_step_pytorch(
-        weights, biases, inputs, inner_iters, block_size
+        weights, biases, inputs, inner_iters, block_size, activation="tanh"
     )
     out_grad = torch.randn_like(expected).cuda()
     expected_grads = torch.autograd.grad(expected, (biases, weights, inputs), out_grad)
@@ -141,7 +141,7 @@ def test_grad_equivalence_gated(
         inputs,
         inner_iters,
         block_size,
-        "leaky_relu",
+        "tanh",
     )
     actual_grads = torch.autograd.grad(actual, (biases, weights, inputs), out_grad)
     for name, x, a in zip(

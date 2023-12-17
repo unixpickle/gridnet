@@ -5,12 +5,17 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-from gridnet.backend_torch import ActivationFn, gridnet_step_pytorch
+from gridnet.backend_torch import (
+    ActivationFn,
+    gated_gridnet_step_pytorch,
+    gridnet_step_pytorch,
+)
 
 try:
-    from .backend_cuda import GridnetCudaOp
+    from .backend_cuda import GatedGridnetCudaOp, GridnetCudaOp
 except ImportError:
     GridnetCudaOp = None
+    GatedGridnetCudaOp = None
 
 
 class Gridnet(nn.Module):
@@ -55,6 +60,41 @@ class Gridnet(nn.Module):
             block_size=self.block_size,
             eps=self.eps,
             normalize=self.normalize,
+            activation=self.activation,
+        )
+
+
+class GatedGridnet(nn.Module):
+    def __init__(
+        self,
+        shape: Tuple[int, int, int],
+        inner_iterations: int,
+        block_size: int,
+        device: torch.device,
+        dtype: torch.dtype = torch.float32,
+        init_scale: float = 1.0,
+        activation: ActivationFn = "tanh",
+    ):
+        super().__init__()
+        self.shape = shape
+        self.inner_iterations = inner_iterations
+        self.block_size = block_size
+        self.activation = activation
+        self.weight = nn.Parameter(
+            torch.randn(3**3, 2, *shape, device=device, dtype=dtype)
+            * (init_scale / math.sqrt(27))
+        )
+        self.bias = nn.Parameter(torch.zeros(2, *shape, device=device, dtype=dtype))
+        self.device = device
+        self.dtype = dtype
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return gated_gridnet_step(
+            weight=self.weight,
+            bias=self.bias,
+            init_activations=x,
+            inner_iterations=self.inner_iterations,
+            block_size=self.block_size,
             activation=self.activation,
         )
 
@@ -150,5 +190,66 @@ def gridnet_step(
         block_size,
         eps,
         normalize,
+        activation,
+    )
+
+
+def gated_gridnet_step(
+    weight: torch.Tensor,
+    bias: torch.Tensor,
+    init_activations: torch.Tensor,
+    inner_iterations: int,
+    block_size: int,
+    activation: ActivationFn = "tanh",
+) -> torch.Tensor:
+    """
+    Apply a forward pass of the gated version of the model on an
+    activations Tensor to produce a new activations Tensor.
+
+    Each update computes a new value, which is modulated with the given
+    activation function, and a gate, which is computed with a sigmoid.
+
+    :param weight: a [3^3 x 2 x M x N x K] weight tensor.
+    :param bias: an [2 x M x N x K] bias matrix, which is combined with
+                 weights during each recurrent iteration.
+    :param init_activations: the input [B x M x N x K] activation grid.
+    :param inner_iterations: the number of recurrent iterations to run for
+                             each [block_size x block_size x block_size]
+                             sub-grid of the full grid before syncing values
+                             back amongst all the blocks.
+                             All iterations of a given block use the initial
+                             values of the surrounding shell of weights around
+                             the block, and only update the local values within
+                             the block. In other words, each block does not
+                             communicate regardless of number of iterations.
+    :param block_size: the size of independent blocks which are updated
+                       recurrently for multiple iterations. Normalization is
+                       also applied only within each block.
+    :param activation: the activation function to apply.
+    """
+    if weight.device.type == "cuda":
+        if GatedGridnetCudaOp is None:
+            warnings.warn("gridnet CUDA implementation is not available")
+        elif block_size not in (4, 8):
+            warnings.warn(
+                f"gridnet block_size {block_size} not supported with CUDA kernel. "
+                "Using fallback implementation."
+            )
+        else:
+            return GatedGridnetCudaOp.apply(
+                weight,
+                bias,
+                init_activations,
+                inner_iterations,
+                block_size,
+                activation,
+            )
+
+    return gated_gridnet_step_pytorch(
+        weight,
+        bias,
+        init_activations,
+        inner_iterations,
+        block_size,
         activation,
     )
