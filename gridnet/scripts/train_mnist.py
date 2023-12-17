@@ -40,7 +40,6 @@ class Model(nn.Module):
             )
             with torch.no_grad():
                 self.network.bias[1].fill_(remember_bias)
-            self.norm = nn.Identity()
         else:
             self.network = Gridnet(
                 (32, 32, 32),
@@ -52,7 +51,7 @@ class Model(nn.Module):
                 normalize=False,
                 activation=activation,
             )
-            self.norm = nn.LayerNorm((32,) * 3, device=device)
+        self.norm = nn.LayerNorm((32,) * 3, device=device)
         self.readout = Readout((32, 32, 32), out_channels=10, device=device)
 
     def forward(self, batch: torch.Tensor):
