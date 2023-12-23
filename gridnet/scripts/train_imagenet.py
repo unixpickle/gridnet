@@ -55,7 +55,7 @@ class Model(nn.Module):
             device=device,
         )
         self.norm = nn.LayerNorm((grid_size,) * 3, device=device)
-        self.readout = Readout((grid_size,) ** 3, out_channels=1000, device=device)
+        self.readout = Readout((grid_size,) * 3, out_channels=1000, device=device)
 
     def forward(self, images: torch.Tensor):
         init_acts = self.init_in[None].repeat(images.shape[0], 1, 1, 1)
