@@ -3,6 +3,19 @@ class LeakyReLU;
 class SiLU;
 class Tanh;
 
+#define APPLY_ACTIVATION(fn, activation)                                        \
+    if (activation == "relu") {                                                 \
+        fn(ReLU);                                                               \
+    } else if (activation == "leaky_relu") {                                    \
+        fn(LeakyReLU);                                                          \
+    } else if (activation == "silu") {                                          \
+        fn(SiLU);                                                               \
+    } else if (activation == "tanh") {                                          \
+        fn(Tanh);                                                               \
+    } else {                                                                    \
+        throw std::runtime_error("unknown activation function: " + activation); \
+    }
+
 template <typename scalar_t>
 __device__ __forceinline__ scalar_t
 sigmoid(scalar_t x)

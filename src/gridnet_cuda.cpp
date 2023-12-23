@@ -7,11 +7,7 @@
 #define CHECK_CONTIGUOUS(x) AT_ASSERTM(x.is_contiguous(), #x " must be contiguous")
 #define CHECK_INPUT(x) \
     CHECK_CUDA(x);     \
-    CHECK_CONTIGUOUS(x)
-#define CHECK_ACT(activation)                                                                                 \
-    if (activation != "relu" && activation != "leaky_relu" && activation != "silu" && activation != "tanh") { \
-        throw std::runtime_error("unknown activation function: " + activation);                               \
-    }
+    CHECK_CONTIGUOUS(x);
 
 void gridnet_cuda_forward(
     torch::Tensor weight,
@@ -79,7 +75,6 @@ void gridnet_forward(
     CHECK_INPUT(scale);
     CHECK_INPUT(initActivations);
     CHECK_INPUT(outActivations);
-    CHECK_ACT(activation);
     gridnet_cuda_forward(
         weight,
         bias,
@@ -118,7 +113,6 @@ void gridnet_backward(
     CHECK_INPUT(biasGradOut);
     CHECK_INPUT(scaleGradOut);
     CHECK_INPUT(activationsGradOut);
-    CHECK_ACT(activation);
     gridnet_cuda_backward(
         weight,
         bias,
@@ -149,7 +143,6 @@ void gated_gridnet_forward(
     CHECK_INPUT(bias);
     CHECK_INPUT(initActivations);
     CHECK_INPUT(outActivations);
-    CHECK_ACT(activation);
     gated_gridnet_cuda_forward(
         weight,
         bias,
@@ -179,7 +172,6 @@ void gated_gridnet_backward(
     CHECK_INPUT(weightGradOut);
     CHECK_INPUT(biasGradOut);
     CHECK_INPUT(activationsGradOut);
-    CHECK_ACT(activation);
     gated_gridnet_cuda_backward(
         weight,
         bias,

@@ -780,15 +780,7 @@ void gridnet_cuda_forward(
                        eps); })); \
     }
 
-    if (activation == "relu") {
-        FORWARD_WITH_ACT(ReLU);
-    } else if (activation == "leaky_relu") {
-        FORWARD_WITH_ACT(LeakyReLU);
-    } else if (activation == "silu") {
-        FORWARD_WITH_ACT(SiLU);
-    } else if (activation == "tanh") {
-        FORWARD_WITH_ACT(Tanh);
-    }
+    APPLY_ACTIVATION(FORWARD_WITH_ACT, activation);
 }
 
 void gridnet_cuda_backward(
@@ -832,7 +824,7 @@ void gridnet_cuda_backward(
                innerIterations,                                                           \
                eps); }));
 
-#define BACKWARD_FOR_ACT(act)                                                                  \
+#define BACKWARD_WITH_ACT(act)                                                                 \
     if (normalize) {                                                                           \
         if (innerIterations <= 8) {                                                            \
             BACKWARD(8, true, act);                                                            \
@@ -855,15 +847,7 @@ void gridnet_cuda_backward(
         }                                                                                      \
     }
 
-    if (activation == "relu") {
-        BACKWARD_FOR_ACT(ReLU);
-    } else if (activation == "leaky_relu") {
-        BACKWARD_FOR_ACT(LeakyReLU);
-    } else if (activation == "silu") {
-        BACKWARD_FOR_ACT(SiLU);
-    } else if (activation == "tanh") {
-        BACKWARD_FOR_ACT(Tanh);
-    }
+    APPLY_ACTIVATION(BACKWARD_WITH_ACT, activation);
 }
 
 void gated_gridnet_cuda_forward(
@@ -894,15 +878,7 @@ void gated_gridnet_cuda_forward(
                    outActivations.packed_accessor32<scalar_t, 4>(),                   \
                    innerIterations); }));
 
-    if (activation == "relu") {
-        GATED_FORWARD_WITH_ACT(ReLU);
-    } else if (activation == "leaky_relu") {
-        GATED_FORWARD_WITH_ACT(LeakyReLU);
-    } else if (activation == "silu") {
-        GATED_FORWARD_WITH_ACT(SiLU);
-    } else if (activation == "tanh") {
-        GATED_FORWARD_WITH_ACT(Tanh);
-    }
+    APPLY_ACTIVATION(GATED_FORWARD_WITH_ACT, activation);
 }
 
 void gated_gridnet_cuda_backward(
@@ -939,7 +915,7 @@ void gated_gridnet_cuda_backward(
                activationsGradOut.packed_accessor32<scalar_t, 4>(),                       \
                innerIterations); }));
 
-#define GATED_BACKWARD_FOR_ACT(act)                                                        \
+#define GATED_BACKWARD_WITH_ACT(act)                                                       \
     if (innerIterations <= 8) {                                                            \
         GATED_BACKWARD(8, act);                                                            \
     } else if (innerIterations <= 16) {                                                    \
@@ -950,13 +926,5 @@ void gated_gridnet_cuda_backward(
         throw std::runtime_error("cannot backprop through more than 32 inner iterations"); \
     }
 
-    if (activation == "relu") {
-        GATED_BACKWARD_FOR_ACT(ReLU);
-    } else if (activation == "leaky_relu") {
-        GATED_BACKWARD_FOR_ACT(LeakyReLU);
-    } else if (activation == "silu") {
-        GATED_BACKWARD_FOR_ACT(SiLU);
-    } else if (activation == "tanh") {
-        GATED_BACKWARD_FOR_ACT(Tanh);
-    }
+    APPLY_ACTIVATION(GATED_BACKWARD_WITH_ACT, activation);
 }
