@@ -24,17 +24,21 @@ class Model(nn.Module):
         init_scale: float,
         residual_scale: float,
         emb_channels: int,
+        grid_size: int,
         activation: ActivationFn,
         device: torch.device,
     ):
         super().__init__()
+        assert 256 % grid_size == 0
         self.outer_iters = outer_iters
         self.outer_residual = outer_residual
         self.emb_channels = emb_channels
         self.device = device
-        self.init_in = nn.Parameter(torch.randn(64, 64, 64, device=device))
+        self.init_in = nn.Parameter(
+            torch.randn(grid_size, grid_size, grid_size, device=device)
+        )
         self.network = Gridnet(
-            (64, 64, 64),
+            (grid_size,) * 3,
             inner_iters,
             8,
             init_scale=init_scale,
@@ -44,10 +48,14 @@ class Model(nn.Module):
             activation=activation,
         )
         self.patch_emb = nn.Conv2d(
-            3, emb_channels, kernel_size=4, stride=4, device=device
+            3,
+            emb_channels,
+            kernel_size=256 // grid_size,
+            stride=256 // grid_size,
+            device=device,
         )
-        self.norm = nn.LayerNorm((64,) * 3, device=device)
-        self.readout = Readout((64, 64, 64), out_channels=1000, device=device)
+        self.norm = nn.LayerNorm((grid_size,) * 3, device=device)
+        self.readout = Readout((grid_size,) ** 3, out_channels=1000, device=device)
 
     def forward(self, images: torch.Tensor):
         init_acts = self.init_in[None].repeat(images.shape[0], 1, 1, 1)
@@ -76,6 +84,7 @@ def main():
     parser.add_argument("--residual_scale", type=float, default=0.5)
     parser.add_argument("--activation", type=str, default="leaky_relu")
     parser.add_argument("--emb_channels", type=int, default=8)
+    parser.add_argument("--grid_size", type=int, default=64)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--inner_iters", type=int, default=8)
     parser.add_argument("--outer_iters", type=int, default=12)
@@ -96,6 +105,7 @@ def main():
         init_scale=args.init_scale,
         residual_scale=args.residual_scale,
         emb_channels=args.emb_channels,
+        grid_size=args.grid_size,
         activation=args.activation,
         device=device,
     )
