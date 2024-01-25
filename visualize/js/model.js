@@ -4,6 +4,17 @@ class Shape extends Array {
         this.forEach((x) => result *= x);
         return result;
     }
+    equal(other) {
+        if (this.length !== other.length) {
+            return false;
+        }
+        for (let i = 0; i < this.length; i++) {
+            if (this[i] != other[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 class Tensor {
     constructor(shape, data) {
@@ -30,8 +41,11 @@ class Tensor {
         return index;
     }
 }
-class PatchEmbed {
+class Layer {
+}
+class PatchEmbed extends Layer {
     constructor(weight, bias) {
+        super();
         this.weight = weight;
         this.bias = bias;
         console.assert(this.weight.shape.length == 4);
@@ -68,6 +82,83 @@ class PatchEmbed {
             }
         }
         return out;
+    }
+}
+class LayerNorm extends Layer {
+    constructor(weight, bias) {
+        super();
+        this.weight = weight;
+        this.bias = bias;
+        console.assert(bias.shape.equal(weight.shape));
+    }
+    forward(x) {
+        console.assert(x.shape == this.weight.shape);
+        let mean = 0;
+        for (let i = 0; i < x.data.length; i++) {
+            mean += x.data[i];
+        }
+        mean /= x.data.length;
+        let variance = 0;
+        for (let i = 0; i < x.data.length; i++) {
+            variance += Math.pow(x.data[i] - mean, 2);
+        }
+        variance /= x.data.length;
+        let std = Math.sqrt(variance);
+        const result = Tensor.zeros(x.shape);
+        for (let i = 0; i < x.data.length; i++) {
+            result.data[i] = (x.data[i] - mean) / std * this.weight.data[i] + this.bias.data[i];
+        }
+        return result;
+    }
+}
+class Linear extends Layer {
+    constructor(weight, bias) {
+        super();
+        this.weight = weight;
+        this.bias = bias;
+        console.assert(weight.shape.length == 2);
+        console.assert(bias.shape.length == 1);
+        console.assert(bias.shape[0] == weight.shape[0]);
+        this.in_channels = weight.shape[1];
+        this.out_channels = weight.shape[0];
+    }
+    forward(x) {
+        console.assert(x.shape.length == 1);
+        console.assert(x.shape[0] == this.in_channels);
+        const result = Tensor.zeros(new Shape(this.out_channels));
+        for (let i = 0; i < this.out_channels; i++) {
+            let acc = this.bias.data[i];
+            const offset = i * this.in_channels;
+            for (let j = 0; j < this.in_channels; j++) {
+                acc += x.data[j] * this.weight.data[offset + j];
+            }
+            result.data[i] = acc;
+        }
+        return result;
+    }
+}
+class Readout extends Layer {
+    constructor(norm, proj) {
+        super();
+        this.norm = norm;
+        this.proj = proj;
+        this.in_channels = proj.in_channels;
+    }
+    forward(x) {
+        const plane_size = x.shape[0] * x.shape[1];
+        console.assert(this.in_channels % plane_size == 0);
+        const z_layers = this.in_channels / plane_size;
+        const flat_out = Tensor.zeros(new Shape(this.in_channels));
+        let out_idx = 0;
+        for (let i = 0; i < x.shape[0]; i++) {
+            for (let j = 0; j < x.shape[1]; j++) {
+                for (let k = x.shape[2] - z_layers; k < x.shape[2]; k++) {
+                    flat_out.data[out_idx++] = x.get(i, j, k);
+                }
+            }
+        }
+        const h = this.norm.forward(flat_out);
+        return this.proj.forward(h);
     }
 }
 //# sourceMappingURL=model.js.map
