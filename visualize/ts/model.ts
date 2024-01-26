@@ -35,6 +35,38 @@ class Tensor {
         this.data[this.flatIndex(indices)] = x;
     }
 
+    slice(start: number[], end: number[]): Tensor {
+        console.assert(start.length == this.shape.length);
+        console.assert(end.length == this.shape.length);
+        const newShape = start.map((x, i) => {
+            return end[i] - x;
+        });
+        const result = Tensor.zeros(new Shape(...newShape));
+        for (let i = 0; i < result.data.length; i++) {
+            const sourceIndex = [];
+            let globalIdx = 0;
+            let outOfBounds = false;
+            for (let j = result.shape.length - 1; j >= 0; j--) {
+                const idx = (globalIdx % result.shape[j]) + start[j];
+                sourceIndex.push(idx);
+                if (idx < 0 || idx >= this.shape[j]) {
+                    outOfBounds = true;
+                    break;
+                }
+                globalIdx = Math.floor(globalIdx / result.shape[j]);
+            }
+            if (!outOfBounds) {
+                sourceIndex.reverse();
+                result.data[i] = this.get(...sourceIndex);
+            }
+        }
+        return result;
+    }
+
+    clone(): Tensor {
+        return new Tensor(this.shape, this.data.slice());
+    }
+
     flatIndex(indices: number[]): number {
         let index = 0;
         let base = 1;
@@ -43,6 +75,26 @@ class Tensor {
             base *= this.shape[i];
         }
         return index;
+    }
+}
+
+type Activation = "silu" | "relu" | "leaky_relu";
+
+function sigmoid(x: number): number {
+    if (x < 0) {
+        return 1 - sigmoid(-x);
+    }
+    const exp = Math.exp(x);
+    return exp / (1 + exp);
+}
+
+function activate(act: Activation, x: number): number {
+    if (act == "silu") {
+        return x * sigmoid(x);
+    } else if (act == "relu") {
+        return Math.max(0, x);
+    } else if (act == "leaky_relu") {
+        return x < 0 ? 0.01 * x : x;
     }
 }
 
@@ -175,5 +227,112 @@ class Readout extends Layer {
         }
         const h = this.norm.forward(flat_out);
         return this.proj.forward(h);
+    }
+}
+
+class Gridnet extends Layer {
+    constructor(
+        private weight: Tensor,
+        private bias: Tensor,
+        private residual_scale: Tensor,
+        private inner_iterations: number,
+        private block_size: number,
+        private activation: Activation,
+    ) {
+        super();
+    }
+
+    forward(x: Tensor): Tensor {
+        const input_indices = this.blockInputIndices();
+        const output = x.clone();
+        for (let i = 0; i < x.shape[0]; i += this.block_size) {
+            for (let j = 0; j < x.shape[0]; j += this.block_size) {
+                for (let k = 0; k < x.shape[0]; k += this.block_size) {
+                    const in_acts = x.slice(
+                        [i - 1, j - 1, k - 1],
+                        [i + this.block_size + 1, j + this.block_size + 1, k + this.block_size + 1],
+                    );
+                    const weight = this.weight.slice(
+                        [i, j, k],
+                        [i + this.block_size, j + this.block_size, k + this.block_size],
+                    );
+                    const bias = this.bias.slice(
+                        [i, j, k],
+                        [i + this.block_size, j + this.block_size, k + this.block_size],
+                    );
+                    const residual_scale = this.residual_scale.slice(
+                        [i, j, k],
+                        [i + this.block_size, j + this.block_size, k + this.block_size],
+                    );
+                    const block_out = this.applyBlock(
+                        input_indices,
+                        in_acts,
+                        weight,
+                        bias,
+                        residual_scale,
+                    );
+                    for (let a = 0; a < this.block_size; a++) {
+                        for (let b = 0; b < this.block_size; b++) {
+                            for (let c = 0; c < this.block_size; c++) {
+                                const val = block_out.get(a + 1, b + 1, c + 1);
+                                output.set(val, a + i, b + j, c + k);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return output;
+    }
+
+    private applyBlock(indices: number[][], in_acts: Tensor, weight: Tensor, bias: Tensor, residual_scale: Tensor): Tensor {
+        let input = in_acts;
+        let output = in_acts;
+        for (let step = 0; step < this.inner_iterations; step++) {
+            output = input.clone();
+
+            for (let a = 0; a < this.block_size; a++) {
+                for (let b = 0; b < this.block_size; b++) {
+                    for (let c = 0; c < this.block_size; c++) {
+                        const in_indices = indices[(a * this.block_size + b) * this.block_size + c];
+                        let acc = bias.get(a, b, c);
+                        in_indices.map((sourceIdx, weightIdx) => {
+                            acc += input.data[sourceIdx] * weight.get(weightIdx, a, b, c);
+                        })
+                        const result = (
+                            output.get(a + 1, b + 1, c + 1) +
+                            activate(this.activation, acc) * residual_scale.get(a, b, c)
+                        );
+                        output.set(result, a + 1, b + 1, c + 1);
+                    }
+                }
+            }
+
+            input = output;
+        }
+        return output;
+    }
+
+    private blockInputIndices(): number[][] {
+        function idxInBlock(i: number, j: number, k: number): number {
+            return k + (this.block_size + 2) * (j + (this.block_size * 2) * i);
+        }
+        const result = [];
+        for (let i = 0; i < this.block_size; i++) {
+            for (let j = 0; j < this.block_size; j++) {
+                for (let k = 0; k < this.block_size; k++) {
+                    const row = [];
+                    for (let a = 0; a < 3; a++) {
+                        for (let b = 0; b < 3; b++) {
+                            for (let c = 0; c < 3; c++) {
+                                row.push(idxInBlock(i + a, j + b, k + c));
+                            }
+                        }
+                    }
+                    result.push(row);
+                }
+            }
+        }
+        return result;
     }
 }
