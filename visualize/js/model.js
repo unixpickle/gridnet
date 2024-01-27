@@ -1,4 +1,16 @@
 class Shape extends Array {
+    constructor(...args) {
+        if (args.length == 1) {
+            super();
+            this.push(args[0]);
+        }
+        else {
+            super(...args);
+        }
+    }
+    toString() {
+        return 'Shape(' + this.join(', ') + ')';
+    }
     numel() {
         let result = 1;
         this.forEach((x) => result *= x);
@@ -32,8 +44,8 @@ class Tensor {
         this.data[this.flatIndex(indices)] = x;
     }
     slice(start, end) {
-        console.assert(start.length == this.shape.length);
-        console.assert(end.length == this.shape.length);
+        assert(start.length == this.shape.length);
+        assert(end.length == this.shape.length);
         const newShape = start.map((x, i) => {
             return end[i] - x;
         });
@@ -64,11 +76,27 @@ class Tensor {
     flatIndex(indices) {
         let index = 0;
         let base = 1;
-        for (let i = indices.length - 1; i >= 0; i++) {
+        for (let i = indices.length - 1; i >= 0; i--) {
             index += indices[i] * base;
             base *= this.shape[i];
         }
         return index;
+    }
+    add(other) {
+        assert(this.shape.equal(other.shape));
+        const newData = this.data.slice();
+        for (let i = 0; i < other.data.length; i++) {
+            newData[i] += other.data[i];
+        }
+        return new Tensor(this.shape, newData);
+    }
+    sub(other) {
+        assert(this.shape.equal(other.shape));
+        const newData = this.data.slice();
+        for (let i = 0; i < other.data.length; i++) {
+            newData[i] -= other.data[i];
+        }
+        return new Tensor(this.shape, newData);
     }
 }
 function sigmoid(x) {
@@ -96,19 +124,19 @@ class PatchEmbed extends Layer {
         super();
         this.weight = weight;
         this.bias = bias;
-        console.assert(this.weight.shape.length == 4);
-        console.assert(this.weight.shape[2] == this.weight.shape[3]);
-        console.assert(this.bias.shape.length == 1);
-        console.assert(this.bias.shape[0] == this.weight.shape[0]);
+        assert(this.weight.shape.length == 4, this.weight.shape);
+        assert(this.weight.shape[2] == this.weight.shape[3], this.weight.shape);
+        assert(this.bias.shape.length == 1, this.bias.shape);
+        assert(this.bias.shape[0] == this.weight.shape[0], this.bias.shape);
         this.out_channels = this.weight.shape[0];
         this.in_channels = this.weight.shape[1];
         this.kernel_size = this.weight.shape[2];
     }
     forward(x) {
-        console.assert(x.shape.length == 3);
-        console.assert(x.shape[0] == this.in_channels);
-        console.assert(x.shape[1] == x.shape[2]);
-        console.assert(x.shape[1] % this.kernel_size == 0);
+        assert(x.shape.length == 3);
+        assert(x.shape[0] == this.in_channels);
+        assert(x.shape[1] == x.shape[2]);
+        assert(x.shape[1] % this.kernel_size == 0);
         const out_size = x.shape[1] / this.kernel_size;
         const out = Tensor.zeros(new Shape(this.out_channels, out_size, out_size));
         for (let out_ch = 0; out_ch < this.out_channels; out_ch++) {
@@ -137,10 +165,10 @@ class LayerNorm extends Layer {
         super();
         this.weight = weight;
         this.bias = bias;
-        console.assert(bias.shape.equal(weight.shape));
+        assert(bias.shape.equal(weight.shape));
     }
     forward(x) {
-        console.assert(x.shape == this.weight.shape);
+        assert(x.shape.equal(this.weight.shape));
         let mean = 0;
         for (let i = 0; i < x.data.length; i++) {
             mean += x.data[i];
@@ -164,15 +192,15 @@ class Linear extends Layer {
         super();
         this.weight = weight;
         this.bias = bias;
-        console.assert(weight.shape.length == 2);
-        console.assert(bias.shape.length == 1);
-        console.assert(bias.shape[0] == weight.shape[0]);
+        assert(weight.shape.length == 2);
+        assert(bias.shape.length == 1);
+        assert(bias.shape[0] == weight.shape[0]);
         this.in_channels = weight.shape[1];
         this.out_channels = weight.shape[0];
     }
     forward(x) {
-        console.assert(x.shape.length == 1);
-        console.assert(x.shape[0] == this.in_channels);
+        assert(x.shape.length == 1);
+        assert(x.shape[0] == this.in_channels);
         const result = Tensor.zeros(new Shape(this.out_channels));
         for (let i = 0; i < this.out_channels; i++) {
             let acc = this.bias.data[i];
@@ -194,7 +222,7 @@ class Readout extends Layer {
     }
     forward(x) {
         const plane_size = x.shape[0] * x.shape[1];
-        console.assert(this.in_channels % plane_size == 0);
+        assert(this.in_channels % plane_size == 0);
         const z_layers = this.in_channels / plane_size;
         const flat_out = Tensor.zeros(new Shape(this.in_channels));
         let out_idx = 0;
@@ -226,7 +254,7 @@ class Gridnet extends Layer {
             for (let j = 0; j < x.shape[0]; j += this.block_size) {
                 for (let k = 0; k < x.shape[0]; k += this.block_size) {
                     const in_acts = x.slice([i - 1, j - 1, k - 1], [i + this.block_size + 1, j + this.block_size + 1, k + this.block_size + 1]);
-                    const weight = this.weight.slice([i, j, k], [i + this.block_size, j + this.block_size, k + this.block_size]);
+                    const weight = this.weight.slice([0, i, j, k], [this.weight.shape[0], i + this.block_size, j + this.block_size, k + this.block_size]);
                     const bias = this.bias.slice([i, j, k], [i + this.block_size, j + this.block_size, k + this.block_size]);
                     const residual_scale = this.residual_scale.slice([i, j, k], [i + this.block_size, j + this.block_size, k + this.block_size]);
                     const block_out = this.applyBlock(input_indices, in_acts, weight, bias, residual_scale);
@@ -267,9 +295,9 @@ class Gridnet extends Layer {
         return output;
     }
     blockInputIndices() {
-        function idxInBlock(i, j, k) {
+        const idxInBlock = (i, j, k) => {
             return k + (this.block_size + 2) * (j + (this.block_size * 2) * i);
-        }
+        };
         const result = [];
         for (let i = 0; i < this.block_size; i++) {
             for (let j = 0; j < this.block_size; j++) {
@@ -287,6 +315,47 @@ class Gridnet extends Layer {
             }
         }
         return result;
+    }
+}
+class ImagenetClassifier extends Layer {
+    constructor(ckpt) {
+        super();
+        this.config = ckpt.config;
+        this.init_in = ckpt.params.get('init_in');
+        this.norm = new LayerNorm(ckpt.params.get('norm.weight'), ckpt.params.get('norm.bias'));
+        this.network = new Gridnet(ckpt.params.get('network.weight'), ckpt.params.get('network.bias'), ckpt.params.get('network.residual_scale'), ckpt.config.inner_iters, 8, ckpt.config.activation);
+        this.patch_emb = new PatchEmbed(ckpt.params.get('patch_emb.weight'), ckpt.params.get('patch_emb.bias'));
+        this.readout = new Readout(new LayerNorm(ckpt.params.get('readout.norm.weight'), ckpt.params.get('readout.norm.bias')), new Linear(ckpt.params.get('readout.proj.weight'), ckpt.params.get('readout.proj.bias')));
+    }
+    forward(x) {
+        const emb = this.patch_emb.forward(x);
+        let h = this.init_in.clone();
+        for (let ch = 0; ch < emb.shape[0]; ch++) {
+            for (let y = 0; y < emb.shape[1]; y++) {
+                for (let x = 0; x < emb.shape[2]; x++) {
+                    h.set(emb.get(ch, y, x), y, x, ch);
+                }
+            }
+        }
+        for (let i = 0; i < this.config.outer_iters; i++) {
+            if (this.config.outer_residual) {
+                const norm_h = this.norm.forward(h);
+                h = h.add(this.network.forward(norm_h).sub(norm_h));
+            }
+            else {
+                h = this.network.forward(h);
+                h = this.norm.forward(h);
+            }
+        }
+        return this.readout.forward(h);
+    }
+}
+function assert(x, ...data) {
+    if (!x) {
+        if (data.length) {
+            console.error(...data);
+        }
+        throw new Error('assertion failed');
     }
 }
 //# sourceMappingURL=model.js.map

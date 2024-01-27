@@ -13,12 +13,12 @@ interface Metadata {
     config: ModelConfig;
 }
 
-interface StateDict {
+interface Checkpoint {
     params: Map<string, Tensor>;
     config: ModelConfig;
 }
 
-async function loadStateDict(url: string): Promise<StateDict> {
+async function loadCheckpoint(url: string): Promise<Checkpoint> {
     const buf = await (await fetch(url)).arrayBuffer();
     const bytes = new Uint8Array(buf);
     const metadataSize = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);

@@ -1,4 +1,17 @@
 class Shape extends Array<number> {
+    constructor(...args: number[]) {
+        if (args.length == 1) {
+            super();
+            this.push(args[0]);
+        } else {
+            super(...args);
+        }
+    }
+
+    toString(): string {
+        return 'Shape(' + this.join(', ') + ')';
+    }
+
     numel(): number {
         let result = 1;
         this.forEach((x) => result *= x);
@@ -36,8 +49,8 @@ class Tensor {
     }
 
     slice(start: number[], end: number[]): Tensor {
-        console.assert(start.length == this.shape.length);
-        console.assert(end.length == this.shape.length);
+        assert(start.length == this.shape.length);
+        assert(end.length == this.shape.length);
         const newShape = start.map((x, i) => {
             return end[i] - x;
         });
@@ -70,11 +83,29 @@ class Tensor {
     flatIndex(indices: number[]): number {
         let index = 0;
         let base = 1;
-        for (let i = indices.length - 1; i >= 0; i++) {
+        for (let i = indices.length - 1; i >= 0; i--) {
             index += indices[i] * base;
             base *= this.shape[i];
         }
         return index;
+    }
+
+    add(other: Tensor): Tensor {
+        assert(this.shape.equal(other.shape));
+        const newData = this.data.slice();
+        for (let i = 0; i < other.data.length; i++) {
+            newData[i] += other.data[i];
+        }
+        return new Tensor(this.shape, newData);
+    }
+
+    sub(other: Tensor): Tensor {
+        assert(this.shape.equal(other.shape));
+        const newData = this.data.slice();
+        for (let i = 0; i < other.data.length; i++) {
+            newData[i] -= other.data[i];
+        }
+        return new Tensor(this.shape, newData);
     }
 }
 
@@ -109,20 +140,22 @@ class PatchEmbed extends Layer {
 
     constructor(private weight: Tensor, private bias: Tensor) {
         super();
-        console.assert(this.weight.shape.length == 4);
-        console.assert(this.weight.shape[2] == this.weight.shape[3]);
-        console.assert(this.bias.shape.length == 1);
-        console.assert(this.bias.shape[0] == this.weight.shape[0]);
+        assert(this.weight.shape.length == 4, this.weight.shape);
+        assert(this.weight.shape[2] == this.weight.shape[3], this.weight.shape);
+        assert(this.bias.shape.length == 1, this.bias.shape);
+        assert(this.bias.shape[0] == this.weight.shape[0], this.bias.shape);
         this.out_channels = this.weight.shape[0];
         this.in_channels = this.weight.shape[1];
         this.kernel_size = this.weight.shape[2];
     }
 
+    // Input shape: [in_channels x size x size]
+    // Output shape: [out_ch x out_size x out_size]
     forward(x: Tensor): Tensor {
-        console.assert(x.shape.length == 3);
-        console.assert(x.shape[0] == this.in_channels);
-        console.assert(x.shape[1] == x.shape[2]);
-        console.assert(x.shape[1] % this.kernel_size == 0);
+        assert(x.shape.length == 3);
+        assert(x.shape[0] == this.in_channels);
+        assert(x.shape[1] == x.shape[2]);
+        assert(x.shape[1] % this.kernel_size == 0);
         const out_size = x.shape[1] / this.kernel_size;
         const out = Tensor.zeros(new Shape(this.out_channels, out_size, out_size));
         for (let out_ch = 0; out_ch < this.out_channels; out_ch++) {
@@ -150,11 +183,11 @@ class PatchEmbed extends Layer {
 class LayerNorm extends Layer {
     constructor(private weight: Tensor, private bias: Tensor) {
         super();
-        console.assert(bias.shape.equal(weight.shape));
+        assert(bias.shape.equal(weight.shape));
     }
 
     forward(x: Tensor): Tensor {
-        console.assert(x.shape == this.weight.shape);
+        assert(x.shape.equal(this.weight.shape));
         let mean = 0;
         for (let i = 0; i < x.data.length; i++) {
             mean += x.data[i];
@@ -181,16 +214,16 @@ class Linear extends Layer {
 
     constructor(private weight: Tensor, private bias: Tensor) {
         super();
-        console.assert(weight.shape.length == 2);
-        console.assert(bias.shape.length == 1);
-        console.assert(bias.shape[0] == weight.shape[0]);
+        assert(weight.shape.length == 2);
+        assert(bias.shape.length == 1);
+        assert(bias.shape[0] == weight.shape[0]);
         this.in_channels = weight.shape[1];
         this.out_channels = weight.shape[0];
     }
 
     forward(x: Tensor): Tensor {
-        console.assert(x.shape.length == 1);
-        console.assert(x.shape[0] == this.in_channels);
+        assert(x.shape.length == 1);
+        assert(x.shape[0] == this.in_channels);
         const result = Tensor.zeros(new Shape(this.out_channels));
         for (let i = 0; i < this.out_channels; i++) {
             let acc = this.bias.data[i];
@@ -214,7 +247,7 @@ class Readout extends Layer {
 
     forward(x: Tensor): Tensor {
         const plane_size = x.shape[0] * x.shape[1];
-        console.assert(this.in_channels % plane_size == 0);
+        assert(this.in_channels % plane_size == 0);
         const z_layers = this.in_channels / plane_size;
         const flat_out = Tensor.zeros(new Shape(this.in_channels));
         let out_idx = 0;
@@ -253,8 +286,8 @@ class Gridnet extends Layer {
                         [i + this.block_size + 1, j + this.block_size + 1, k + this.block_size + 1],
                     );
                     const weight = this.weight.slice(
-                        [i, j, k],
-                        [i + this.block_size, j + this.block_size, k + this.block_size],
+                        [0, i, j, k],
+                        [this.weight.shape[0], i + this.block_size, j + this.block_size, k + this.block_size],
                     );
                     const bias = this.bias.slice(
                         [i, j, k],
@@ -314,9 +347,10 @@ class Gridnet extends Layer {
     }
 
     private blockInputIndices(): number[][] {
-        function idxInBlock(i: number, j: number, k: number): number {
+        const idxInBlock = (i: number, j: number, k: number): number => {
             return k + (this.block_size + 2) * (j + (this.block_size * 2) * i);
-        }
+        };
+
         const result = [];
         for (let i = 0; i < this.block_size; i++) {
             for (let j = 0; j < this.block_size; j++) {
@@ -334,5 +368,80 @@ class Gridnet extends Layer {
             }
         }
         return result;
+    }
+}
+
+class ImagenetClassifier extends Layer {
+    private config: ModelConfig;
+    private init_in: Tensor;
+    private network: Gridnet;
+    private norm: LayerNorm;
+    private patch_emb: PatchEmbed;
+    private readout: Readout;
+
+    constructor(ckpt: Checkpoint) {
+        super();
+        this.config = ckpt.config;
+
+        this.init_in = ckpt.params.get('init_in');
+        this.norm = new LayerNorm(
+            ckpt.params.get('norm.weight'),
+            ckpt.params.get('norm.bias'),
+        );
+        this.network = new Gridnet(
+            ckpt.params.get('network.weight'),
+            ckpt.params.get('network.bias'),
+            ckpt.params.get('network.residual_scale'),
+            ckpt.config.inner_iters,
+            8,
+            ckpt.config.activation as Activation,
+        );
+        this.patch_emb = new PatchEmbed(
+            ckpt.params.get('patch_emb.weight'),
+            ckpt.params.get('patch_emb.bias'),
+        );
+        this.readout = new Readout(
+            new LayerNorm(
+                ckpt.params.get('readout.norm.weight'),
+                ckpt.params.get('readout.norm.bias'),
+            ),
+            new Linear(
+                ckpt.params.get('readout.proj.weight'),
+                ckpt.params.get('readout.proj.bias'),
+            ),
+        );
+    }
+
+    forward(x: Tensor): Tensor {
+        const emb = this.patch_emb.forward(x);
+        let h = this.init_in.clone();
+        for (let ch = 0; ch < emb.shape[0]; ch++) {
+            for (let y = 0; y < emb.shape[1]; y++) {
+                for (let x = 0; x < emb.shape[2]; x++) {
+                    h.set(emb.get(ch, y, x), y, x, ch);
+                }
+            }
+        }
+
+        for (let i = 0; i < this.config.outer_iters; i++) {
+            if (this.config.outer_residual) {
+                const norm_h = this.norm.forward(h);
+                h = h.add(this.network.forward(norm_h).sub(norm_h));
+            } else {
+                h = this.network.forward(h);
+                h = this.norm.forward(h);
+            }
+        }
+
+        return this.readout.forward(h);
+    }
+}
+
+function assert(x: boolean, ...data: any) {
+    if (!x) {
+        if (data.length) {
+            console.error(...data);
+        }
+        throw new Error('assertion failed');
     }
 }

@@ -7,7 +7,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-function loadStateDict(url) {
+function loadCheckpoint(url) {
     return __awaiter(this, void 0, void 0, function* () {
         const buf = yield (yield fetch(url)).arrayBuffer();
         const bytes = new Uint8Array(buf);

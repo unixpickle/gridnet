@@ -12,7 +12,8 @@ import torch
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--save_path", type=str, required=True)
+    parser.add_argument("--input_path", type=str, required=True)
+    parser.add_argument("--output_path", type=str, required=True)
     parser.add_argument("--activation", type=str, default="leaky_relu")
     parser.add_argument("--emb_channels", type=int, default=8)
     parser.add_argument("--grid_size", type=int, default=64)
@@ -23,8 +24,8 @@ def main():
 
     device = torch.device("cpu")
 
-    with open(args.save_path, "wb") as f:
-        state = torch.load(f, map_location=device)
+    with open(args.input_path, "rb") as f:
+        state = torch.load(f, map_location=device)["model"]
 
     metadata = dict(
         params=[(k, v.shape) for k, v in state.items()],
