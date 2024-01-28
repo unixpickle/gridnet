@@ -57,7 +57,7 @@ class Tensor {
         const result = Tensor.zeros(new Shape(...newShape));
         for (let i = 0; i < result.data.length; i++) {
             const sourceIndex = [];
-            let globalIdx = 0;
+            let globalIdx = i;
             let outOfBounds = false;
             for (let j = result.shape.length - 1; j >= 0; j--) {
                 const idx = (globalIdx % result.shape[j]) + start[j];
@@ -198,7 +198,7 @@ class LayerNorm extends Layer {
             variance += Math.pow(x.data[i] - mean, 2);
         }
         variance /= x.data.length;
-        let std = Math.sqrt(variance);
+        let std = Math.sqrt(variance + 1e-5);
 
         const result = Tensor.zeros(x.shape);
         for (let i = 0; i < x.data.length; i++) {
@@ -329,9 +329,9 @@ class Gridnet extends Layer {
                     for (let c = 0; c < this.block_size; c++) {
                         const in_indices = indices[(a * this.block_size + b) * this.block_size + c];
                         let acc = bias.get(a, b, c);
-                        in_indices.map((sourceIdx, weightIdx) => {
+                        in_indices.forEach((sourceIdx, weightIdx) => {
                             acc += input.data[sourceIdx] * weight.get(weightIdx, a, b, c);
-                        })
+                        });
                         const result = (
                             output.get(a + 1, b + 1, c + 1) +
                             activate(this.activation, acc) * residual_scale.get(a, b, c)
@@ -348,7 +348,7 @@ class Gridnet extends Layer {
 
     private blockInputIndices(): number[][] {
         const idxInBlock = (i: number, j: number, k: number): number => {
-            return k + (this.block_size + 2) * (j + (this.block_size * 2) * i);
+            return k + (this.block_size + 2) * (j + (this.block_size + 2) * i);
         };
 
         const result = [];
