@@ -31,7 +31,7 @@ async function loadCheckpoint(url: string): Promise<Checkpoint> {
     metadata["params"].forEach((info: [string, number[]]) => {
         const [name, rawShape] = info;
         const shape = new Shape(...rawShape);
-        const param = new Tensor(shape, allData.slice(0, shape.numel()));
+        const param = Tensor.from(shape, allData.slice(0, shape.numel()));
         allData = allData.slice(shape.numel());
         params.set(name, param);
     });

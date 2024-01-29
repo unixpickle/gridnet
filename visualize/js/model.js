@@ -33,15 +33,26 @@ class Tensor {
         this.shape = shape;
         this.data = data;
     }
+    static from(shape, data) {
+        if (shape.length === 1) {
+            return new Tensor1(shape, data);
+        }
+        else if (shape.length === 2) {
+            return new Tensor2(shape, data);
+        }
+        else if (shape.length === 3) {
+            return new Tensor3(shape, data);
+        }
+        else if (shape.length === 4) {
+            return new Tensor4(shape, data);
+        }
+        else {
+            throw new Error(`unsupported shape: ${shape}`);
+        }
+    }
     static zeros(shape) {
         const data = new Float32Array(shape.numel());
-        return new Tensor(shape, data);
-    }
-    get(...indices) {
-        return this.data[this.flatIndex(indices)];
-    }
-    set(x, ...indices) {
-        this.data[this.flatIndex(indices)] = x;
+        return Tensor.from(shape, data);
     }
     slice(start, end) {
         assert(start.length == this.shape.length);
@@ -70,25 +81,13 @@ class Tensor {
         }
         return result;
     }
-    clone() {
-        return new Tensor(this.shape, this.data.slice());
-    }
-    flatIndex(indices) {
-        let index = 0;
-        let base = 1;
-        for (let i = indices.length - 1; i >= 0; i--) {
-            index += indices[i] * base;
-            base *= this.shape[i];
-        }
-        return index;
-    }
     add(other) {
         assert(this.shape.equal(other.shape));
         const newData = this.data.slice();
         for (let i = 0; i < other.data.length; i++) {
             newData[i] += other.data[i];
         }
-        return new Tensor(this.shape, newData);
+        return Tensor.from(this.shape, newData);
     }
     sub(other) {
         assert(this.shape.equal(other.shape));
@@ -96,7 +95,86 @@ class Tensor {
         for (let i = 0; i < other.data.length; i++) {
             newData[i] -= other.data[i];
         }
-        return new Tensor(this.shape, newData);
+        return Tensor.from(this.shape, newData);
+    }
+}
+class Tensor1 extends Tensor {
+    constructor(shape, data) {
+        super(shape, data);
+        assert(shape.length == 1);
+    }
+    get(i) {
+        return this.data[i];
+    }
+    set(x, i) {
+        this.data[i] = x;
+    }
+    clone() {
+        return new Tensor1(this.shape, this.data.slice());
+    }
+}
+class Tensor2 extends Tensor {
+    constructor(shape, data) {
+        super(shape, data);
+        assert(shape.length == 2);
+    }
+    get(i, j) {
+        return this.data[i * this.shape[1] + j];
+    }
+    set(x, i, j) {
+        this.data[i * this.shape[1] + j] = x;
+    }
+    clone() {
+        return new Tensor2(this.shape, this.data.slice());
+    }
+}
+class Tensor3 extends Tensor {
+    constructor(shape, data) {
+        super(shape, data);
+        assert(shape.length == 3);
+    }
+    get(i, j, k) {
+        return this.data[(i * this.shape[1] + j) * this.shape[2] + k];
+    }
+    set(x, i, j, k) {
+        this.data[(i * this.shape[1] + j) * this.shape[2] + k] = x;
+    }
+    clone() {
+        return new Tensor3(this.shape, this.data.slice());
+    }
+}
+class Tensor4 extends Tensor {
+    constructor(shape, data) {
+        super(shape, data);
+        assert(shape.length == 4);
+    }
+    get(i, j, k, l) {
+        return this.data[((i * this.shape[1] + j) * this.shape[2] + k) * this.shape[3] + l];
+    }
+    set(x, i, j, k, l) {
+        this.data[((i * this.shape[1] + j) * this.shape[2] + k) * this.shape[3] + l] = x;
+    }
+    slice(start, end) {
+        assert(start.length == this.shape.length);
+        assert(end.length == this.shape.length);
+        const newShape = start.map((x, i) => {
+            return end[i] - x;
+        });
+        const result = Tensor.zeros(new Shape(...newShape));
+        let outIndex = 0;
+        for (let i = start[0]; i < end[0]; i++) {
+            for (let j = start[1]; j < end[1]; j++) {
+                for (let k = start[2]; k < end[2]; k++) {
+                    for (let l = start[3]; l < end[3]; l++) {
+                        result.data[outIndex++] = this.get(i, j, k, l);
+                    }
+                }
+            }
+        }
+        return result;
+    }
+    clone() {
+        return new Tensor3(this.shape, this.data.slice());
     }
 }
 function sigmoid(x) {

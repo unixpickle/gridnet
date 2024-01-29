@@ -21,8 +21,9 @@ function loadModel() {
 window.addEventListener('load', () => {
     const button = document.createElement('button');
     button.onclick = () => {
-        loadModel();
-        button.textContent = 'Done';
+        loadModel().then(() => {
+            button.textContent = 'Done';
+        });
     };
     button.textContent = 'Run forward';
     document.body.appendChild(button);
