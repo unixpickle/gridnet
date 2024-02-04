@@ -139,6 +139,23 @@ class Tensor3 extends Tensor {
     set(x, i, j, k) {
         this.data[(i * this.shape[1] + j) * this.shape[2] + k] = x;
     }
+    slice(start, end) {
+        assert(start.length == this.shape.length);
+        assert(end.length == this.shape.length);
+        const newShape = start.map((x, i) => {
+            return end[i] - x;
+        });
+        const result = Tensor.zeros(new Shape(...newShape));
+        let outIndex = 0;
+        for (let i = start[0]; i < end[0]; i++) {
+            for (let j = start[1]; j < end[1]; j++) {
+                for (let k = start[2]; k < end[2]; k++) {
+                    result.data[outIndex++] = this.get(i, j, k);
+                }
+            }
+        }
+        return result;
+    }
     clone() {
         return new Tensor3(this.shape, this.data.slice());
     }
@@ -184,15 +201,15 @@ function sigmoid(x) {
     const exp = Math.exp(x);
     return exp / (1 + exp);
 }
-function activate(act, x) {
+function activationImpl(act) {
     if (act == "silu") {
-        return x * sigmoid(x);
+        return (x) => x * sigmoid(x);
     }
     else if (act == "relu") {
-        return Math.max(0, x);
+        return (x) => Math.max(0, x);
     }
     else if (act == "leaky_relu") {
-        return x < 0 ? 0.01 * x : x;
+        return (x) => x < 0 ? 0.01 * x : x;
     }
 }
 class Layer {
@@ -323,7 +340,7 @@ class Gridnet extends Layer {
         this.residual_scale = residual_scale;
         this.inner_iterations = inner_iterations;
         this.block_size = block_size;
-        this.activation = activation;
+        this.activation = activationImpl(activation);
     }
     forward(x) {
         const input_indices = this.blockInputIndices();
@@ -354,16 +371,17 @@ class Gridnet extends Layer {
         let output = in_acts;
         for (let step = 0; step < this.inner_iterations; step++) {
             output = input.clone();
+            let unroll_idx = 0;
             for (let a = 0; a < this.block_size; a++) {
                 for (let b = 0; b < this.block_size; b++) {
                     for (let c = 0; c < this.block_size; c++) {
-                        const in_indices = indices[(a * this.block_size + b) * this.block_size + c];
                         let acc = bias.get(a, b, c);
-                        in_indices.forEach((sourceIdx, weightIdx) => {
-                            acc += input.data[sourceIdx] * weight.get(weightIdx, a, b, c);
-                        });
+                        for (let i = 0; i < 3 * 3 * 3; i++) {
+                            const source_idx = indices[unroll_idx++];
+                            acc += input.data[source_idx] * weight.get(i, a, b, c);
+                        }
                         const result = (output.get(a + 1, b + 1, c + 1) +
-                            activate(this.activation, acc) * residual_scale.get(a, b, c));
+                            this.activation(acc) * residual_scale.get(a, b, c));
                         output.set(result, a + 1, b + 1, c + 1);
                     }
                 }
@@ -376,7 +394,7 @@ class Gridnet extends Layer {
         const idxInBlock = (i, j, k) => {
             return k + (this.block_size + 2) * (j + (this.block_size + 2) * i);
         };
-        const result = [];
+        let result = [];
         for (let i = 0; i < this.block_size; i++) {
             for (let j = 0; j < this.block_size; j++) {
                 for (let k = 0; k < this.block_size; k++) {
@@ -388,7 +406,7 @@ class Gridnet extends Layer {
                             }
                         }
                     }
-                    result.push(row);
+                    result = result.concat(row);
                 }
             }
         }
