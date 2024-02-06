@@ -7,6 +7,33 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+class ImagePicker {
+    constructor() {
+        this.upload_button = document.getElementById('upload-button');
+        this.canvas = document.getElementById('image-resizer');
+        this.input = document.createElement('input');
+        this.input.style.visibility = 'hidden';
+        this.input.style.position = 'fixed';
+        document.body.appendChild(this.input);
+        this.upload_button.addEventListener('click', () => this.input.click());
+        this.input.addEventListener('input', () => this.handleUpload());
+    }
+    handleUpload() {
+        if (this.input.files && this.input.files[0]) {
+            var reader = new FileReader();
+            reader.addEventListener('load', () => {
+                const img = document.createElement('img');
+                img.addEventListener('load', () => {
+                    this.handleImage(img);
+                });
+                img.src = reader.result;
+            });
+            reader.readAsDataURL(this.input.files[0]);
+        }
+    }
+    handleImage(img) {
+    }
+}
 function loadModel() {
     return __awaiter(this, void 0, void 0, function* () {
         const ckpt = yield loadCheckpoint('/checkpoints/imagenet_64x64');
