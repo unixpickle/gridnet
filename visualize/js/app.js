@@ -23,6 +23,32 @@ class ImagePicker {
         this.input.addEventListener('input', () => this.handleUpload());
         this.setupPointerEvents();
     }
+    getImage() {
+        const dst = document.createElement('canvas');
+        dst.width = 256;
+        dst.height = 256;
+        const img_scale = (256 - ImagePicker.PADDING * 2) / Math.min(this.image.width, this.image.height);
+        const ctx = dst.getContext('2d');
+        ctx.clearRect(0, 0, 256, 256);
+        ctx.scale(img_scale, img_scale);
+        ctx.translate(-this.offset[0], -this.offset[1]);
+        ctx.drawImage(this.image, 0, 0);
+        const data = ctx.getImageData(0, 0, 256, 256);
+        const output = Tensor3.zeros(new Shape(3, 256, 256));
+        let offset = 0;
+        for (let y = 0; y < 256; y++) {
+            for (let x = 0; x < 256; x++) {
+                const r = data.data[offset++] / 255;
+                const g = data.data[offset++] / 255;
+                const b = data.data[offset++] / 255;
+                offset++;
+                output.set((r - 0.485) / 0.229, 0, y, x);
+                output.set((g - 0.456) / 0.224, 1, y, x);
+                output.set((b - 0.406) / 0.225, 2, y, x);
+            }
+        }
+        return output;
+    }
     handleUpload() {
         if (this.input.files && this.input.files[0]) {
             var reader = new FileReader();
@@ -94,17 +120,21 @@ ImagePicker.PADDING = 20;
 class App {
     constructor() {
         this.image_picker = new ImagePicker();
+        this.classify_button = document.getElementById('classify-button');
+        loadModel().then((model) => {
+            this.model = model;
+        });
+        this.classify_button.addEventListener('click', () => {
+            const img = this.image_picker.getImage();
+            const pred = this.model.forward(img);
+            console.log(pred);
+        });
     }
 }
 function loadModel() {
     return __awaiter(this, void 0, void 0, function* () {
         const ckpt = yield loadCheckpoint('/checkpoints/imagenet_64x64');
-        const model = new ImagenetClassifier(ckpt);
-        const input = Tensor.zeros(new Shape(3, 256, 256));
-        for (let i = 0; i < input.data.length; i++) {
-            input.data[i] = Math.sin(i);
-        }
-        console.log(model.forward(input));
+        return new ImagenetClassifier(ckpt);
     });
 }
 window.addEventListener('load', () => {
