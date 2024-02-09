@@ -11,15 +11,15 @@ class ImagePicker {
     constructor() {
         this.image = null;
         this.offset = null;
-        this.max_offset = null;
-        this.upload_button = document.getElementById('upload-button');
+        this.maxOffset = null;
+        this.uploadButton = document.getElementById('upload-button');
         this.canvas = document.getElementById('image-resizer');
         this.input = document.createElement('input');
         this.input.style.visibility = 'hidden';
         this.input.style.position = 'fixed';
         this.input.type = 'file';
         document.body.appendChild(this.input);
-        this.upload_button.addEventListener('click', () => this.input.click());
+        this.uploadButton.addEventListener('click', () => this.input.click());
         this.input.addEventListener('input', () => this.handleUpload());
         this.setupPointerEvents();
     }
@@ -27,10 +27,10 @@ class ImagePicker {
         const dst = document.createElement('canvas');
         dst.width = 256;
         dst.height = 256;
-        const img_scale = (256 - ImagePicker.PADDING * 2) / Math.min(this.image.width, this.image.height);
+        const imgScale = (256 - ImagePicker.PADDING * 2) / Math.min(this.image.width, this.image.height);
         const ctx = dst.getContext('2d');
         ctx.clearRect(0, 0, 256, 256);
-        ctx.scale(img_scale, img_scale);
+        ctx.scale(imgScale, imgScale);
         ctx.translate(-this.offset[0], -this.offset[1]);
         ctx.drawImage(this.image, 0, 0);
         const data = ctx.getImageData(0, 0, 256, 256);
@@ -71,7 +71,7 @@ class ImagePicker {
             this.offset = [0, (img.height - img.width) / 2];
         }
         const min_size = Math.min(img.width, img.height);
-        this.max_offset = [img.width - min_size, img.height - min_size];
+        this.maxOffset = [img.width - min_size, img.height - min_size];
         this.draw();
     }
     draw() {
@@ -81,31 +81,31 @@ class ImagePicker {
             ctx.fillText('Please select an image', this.canvas.width / 2, this.canvas.height / 2);
             return;
         }
-        const window_size = this.canvas.width;
-        const img_scale = (window_size - ImagePicker.PADDING * 2) / Math.min(this.image.width, this.image.height);
+        const windowSize = this.canvas.width;
+        const imgScale = (windowSize - ImagePicker.PADDING * 2) / Math.min(this.image.width, this.image.height);
         const ctx = this.canvas.getContext('2d');
-        ctx.clearRect(0, 0, window_size, window_size);
+        ctx.clearRect(0, 0, windowSize, windowSize);
         ctx.save();
         ctx.translate(ImagePicker.PADDING, ImagePicker.PADDING);
-        ctx.scale(img_scale, img_scale);
+        ctx.scale(imgScale, imgScale);
         ctx.translate(-this.offset[0], -this.offset[1]);
         ctx.drawImage(this.image, 0, 0);
         ctx.restore();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-        ctx.fillRect(ImagePicker.PADDING, 0, window_size - ImagePicker.PADDING * 2, ImagePicker.PADDING);
-        ctx.fillRect(0, 0, ImagePicker.PADDING, window_size);
-        ctx.fillRect(window_size - ImagePicker.PADDING, 0, ImagePicker.PADDING, window_size);
-        ctx.fillRect(ImagePicker.PADDING, window_size - ImagePicker.PADDING, window_size - ImagePicker.PADDING * 2, ImagePicker.PADDING);
+        ctx.fillRect(ImagePicker.PADDING, 0, windowSize - ImagePicker.PADDING * 2, ImagePicker.PADDING);
+        ctx.fillRect(0, 0, ImagePicker.PADDING, windowSize);
+        ctx.fillRect(windowSize - ImagePicker.PADDING, 0, ImagePicker.PADDING, windowSize);
+        ctx.fillRect(ImagePicker.PADDING, windowSize - ImagePicker.PADDING, windowSize - ImagePicker.PADDING * 2, ImagePicker.PADDING);
     }
     setupPointerEvents() {
         this.canvas.addEventListener('mousedown', (startEvent) => {
             const start_offset = this.offset;
             const moveEvent = (moveEvent) => {
-                const delta_x = moveEvent.clientX - startEvent.clientX;
-                const delta_y = moveEvent.clientY - startEvent.clientY;
+                const deltaX = moveEvent.clientX - startEvent.clientX;
+                const deltaY = moveEvent.clientY - startEvent.clientY;
                 this.offset = [
-                    Math.min(this.max_offset[0], Math.max(0, start_offset[0] - delta_x)),
-                    Math.min(this.max_offset[1], Math.max(0, start_offset[1] - delta_y)),
+                    Math.min(this.maxOffset[0], Math.max(0, start_offset[0] - deltaX)),
+                    Math.min(this.maxOffset[1], Math.max(0, start_offset[1] - deltaY)),
                 ];
                 this.draw();
             };
@@ -119,13 +119,13 @@ class ImagePicker {
 ImagePicker.PADDING = 20;
 class App {
     constructor() {
-        this.image_picker = new ImagePicker();
-        this.classify_button = document.getElementById('classify-button');
+        this.imagePicker = new ImagePicker();
+        this.classifyButton = document.getElementById('classify-button');
         loadModel().then((model) => {
             this.model = model;
         });
-        this.classify_button.addEventListener('click', () => {
-            const img = this.image_picker.getImage();
+        this.classifyButton.addEventListener('click', () => {
+            const img = this.imagePicker.getImage();
             const pred = this.model.forward(img);
             console.log(pred);
         });

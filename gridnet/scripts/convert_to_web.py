@@ -29,12 +29,12 @@ def main():
 
     metadata = dict(
         params=[(k, v.shape) for k, v in state.items()],
-        config=dict(
-            activation=args.activation,
-            inner_iters=args.inner_iters,
-            outer_iters=args.outer_iters,
-            outer_residual=args.outer_residual,
-        ),
+        config={
+            "activation": args.activation,
+            "innerIters": args.inner_iters,
+            "outerIters": args.outer_iters,
+            "outerResidual": args.outer_residual,
+        },
     )
     metadata_bytes = bytes(json.dumps(metadata), "utf-8")
 

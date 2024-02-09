@@ -3,9 +3,9 @@
 
 interface ModelConfig {
     activation: string;
-    inner_iters: number;
-    outer_iters: number;
-    outer_residual: boolean;
+    innerIters: number;
+    outerIters: number;
+    outerResidual: boolean;
 }
 
 interface Metadata {

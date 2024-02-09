@@ -223,32 +223,32 @@ class PatchEmbed extends Layer {
         assert(this.weight.shape[2] == this.weight.shape[3], this.weight.shape);
         assert(this.bias.shape.length == 1, this.bias.shape);
         assert(this.bias.shape[0] == this.weight.shape[0], this.bias.shape);
-        this.out_channels = this.weight.shape[0];
-        this.in_channels = this.weight.shape[1];
-        this.kernel_size = this.weight.shape[2];
+        this.outChannels = this.weight.shape[0];
+        this.inChannels = this.weight.shape[1];
+        this.kernelSize = this.weight.shape[2];
     }
     forward(x) {
         assert(x.shape.length == 3);
-        assert(x.shape[0] == this.in_channels);
+        assert(x.shape[0] == this.inChannels);
         assert(x.shape[1] == x.shape[2]);
-        assert(x.shape[1] % this.kernel_size == 0);
-        const out_size = x.shape[1] / this.kernel_size;
-        const out = Tensor.zeros(new Shape(this.out_channels, out_size, out_size));
-        for (let out_ch = 0; out_ch < this.out_channels; out_ch++) {
-            let bias = this.bias.get(out_ch);
-            for (let out_y = 0; out_y < out_size; out_y++) {
-                for (let out_x = 0; out_x < out_size; out_x++) {
+        assert(x.shape[1] % this.kernelSize == 0);
+        const outSize = x.shape[1] / this.kernelSize;
+        const out = Tensor.zeros(new Shape(this.outChannels, outSize, outSize));
+        for (let outCh = 0; outCh < this.outChannels; outCh++) {
+            let bias = this.bias.get(outCh);
+            for (let outY = 0; outY < outSize; outY++) {
+                for (let outX = 0; outX < outSize; outX++) {
                     let accum = bias;
-                    for (let in_ch = 0; in_ch < this.in_channels; in_ch++) {
-                        for (let i = 0; i < this.kernel_size; i++) {
-                            for (let j = 0; j < this.kernel_size; j++) {
-                                const weight = this.weight.get(out_ch, in_ch, i, j);
-                                const value = x.get(in_ch, out_y * this.kernel_size + i, out_x * this.kernel_size + j);
+                    for (let in_ch = 0; in_ch < this.inChannels; in_ch++) {
+                        for (let i = 0; i < this.kernelSize; i++) {
+                            for (let j = 0; j < this.kernelSize; j++) {
+                                const weight = this.weight.get(outCh, in_ch, i, j);
+                                const value = x.get(in_ch, outY * this.kernelSize + i, outX * this.kernelSize + j);
                                 accum += weight * value;
                             }
                         }
                     }
-                    out.set(accum, out_ch, out_y, out_x);
+                    out.set(accum, outCh, outY, outX);
                 }
             }
         }
@@ -290,17 +290,17 @@ class Linear extends Layer {
         assert(weight.shape.length == 2);
         assert(bias.shape.length == 1);
         assert(bias.shape[0] == weight.shape[0]);
-        this.in_channels = weight.shape[1];
-        this.out_channels = weight.shape[0];
+        this.inChannels = weight.shape[1];
+        this.outChannels = weight.shape[0];
     }
     forward(x) {
         assert(x.shape.length == 1);
-        assert(x.shape[0] == this.in_channels);
-        const result = Tensor.zeros(new Shape(this.out_channels));
-        for (let i = 0; i < this.out_channels; i++) {
+        assert(x.shape[0] == this.inChannels);
+        const result = Tensor.zeros(new Shape(this.outChannels));
+        for (let i = 0; i < this.outChannels; i++) {
             let acc = this.bias.data[i];
-            const offset = i * this.in_channels;
-            for (let j = 0; j < this.in_channels; j++) {
+            const offset = i * this.inChannels;
+            for (let j = 0; j < this.inChannels; j++) {
                 acc += x.data[j] * this.weight.data[offset + j];
             }
             result.data[i] = acc;
@@ -313,49 +313,49 @@ class Readout extends Layer {
         super();
         this.norm = norm;
         this.proj = proj;
-        this.in_channels = proj.in_channels;
+        this.inChannels = proj.inChannels;
     }
     forward(x) {
         const plane_size = x.shape[0] * x.shape[1];
-        assert(this.in_channels % plane_size == 0);
-        const z_layers = this.in_channels / plane_size;
-        const flat_out = Tensor.zeros(new Shape(this.in_channels));
+        assert(this.inChannels % plane_size == 0);
+        const zLayers = this.inChannels / plane_size;
+        const flatOut = Tensor.zeros(new Shape(this.inChannels));
         let out_idx = 0;
         for (let i = 0; i < x.shape[0]; i++) {
             for (let j = 0; j < x.shape[1]; j++) {
-                for (let k = x.shape[2] - z_layers; k < x.shape[2]; k++) {
-                    flat_out.data[out_idx++] = x.get(i, j, k);
+                for (let k = x.shape[2] - zLayers; k < x.shape[2]; k++) {
+                    flatOut.data[out_idx++] = x.get(i, j, k);
                 }
             }
         }
-        const h = this.norm.forward(flat_out);
+        const h = this.norm.forward(flatOut);
         return this.proj.forward(h);
     }
 }
 class Gridnet extends Layer {
-    constructor(weight, bias, residual_scale, inner_iterations, block_size, activation) {
+    constructor(weight, bias, residualScale, innerActivations, blockSize, activation) {
         super();
         this.weight = weight;
         this.bias = bias;
-        this.residual_scale = residual_scale;
-        this.inner_iterations = inner_iterations;
-        this.block_size = block_size;
+        this.residualScale = residualScale;
+        this.innerActivations = innerActivations;
+        this.blockSize = blockSize;
         this.activation = activationImpl(activation);
     }
     forward(x) {
-        const input_indices = this.blockInputIndices();
+        const inputIndices = this.blockInputIndices();
         const output = x.clone();
-        for (let i = 0; i < x.shape[0]; i += this.block_size) {
-            for (let j = 0; j < x.shape[0]; j += this.block_size) {
-                for (let k = 0; k < x.shape[0]; k += this.block_size) {
-                    const in_acts = x.slice([i - 1, j - 1, k - 1], [i + this.block_size + 1, j + this.block_size + 1, k + this.block_size + 1]);
-                    const weight = this.weight.slice([0, i, j, k], [this.weight.shape[0], i + this.block_size, j + this.block_size, k + this.block_size]);
-                    const bias = this.bias.slice([i, j, k], [i + this.block_size, j + this.block_size, k + this.block_size]);
-                    const residual_scale = this.residual_scale.slice([i, j, k], [i + this.block_size, j + this.block_size, k + this.block_size]);
-                    const block_out = this.applyBlock(input_indices, in_acts, weight, bias, residual_scale);
-                    for (let a = 0; a < this.block_size; a++) {
-                        for (let b = 0; b < this.block_size; b++) {
-                            for (let c = 0; c < this.block_size; c++) {
+        for (let i = 0; i < x.shape[0]; i += this.blockSize) {
+            for (let j = 0; j < x.shape[0]; j += this.blockSize) {
+                for (let k = 0; k < x.shape[0]; k += this.blockSize) {
+                    const inActs = x.slice([i - 1, j - 1, k - 1], [i + this.blockSize + 1, j + this.blockSize + 1, k + this.blockSize + 1]);
+                    const weight = this.weight.slice([0, i, j, k], [this.weight.shape[0], i + this.blockSize, j + this.blockSize, k + this.blockSize]);
+                    const bias = this.bias.slice([i, j, k], [i + this.blockSize, j + this.blockSize, k + this.blockSize]);
+                    const residualScale = this.residualScale.slice([i, j, k], [i + this.blockSize, j + this.blockSize, k + this.blockSize]);
+                    const block_out = this.applyBlock(inputIndices, inActs, weight, bias, residualScale);
+                    for (let a = 0; a < this.blockSize; a++) {
+                        for (let b = 0; b < this.blockSize; b++) {
+                            for (let c = 0; c < this.blockSize; c++) {
                                 const val = block_out.get(a + 1, b + 1, c + 1);
                                 output.set(val, a + i, b + j, c + k);
                             }
@@ -366,22 +366,22 @@ class Gridnet extends Layer {
         }
         return output;
     }
-    applyBlock(indices, in_acts, weight, bias, residual_scale) {
-        let input = in_acts;
-        let output = in_acts;
-        for (let step = 0; step < this.inner_iterations; step++) {
+    applyBlock(indices, inActs, weight, bias, residualScale) {
+        let input = inActs;
+        let output = inActs;
+        for (let step = 0; step < this.innerActivations; step++) {
             output = input.clone();
             let unroll_idx = 0;
-            for (let a = 0; a < this.block_size; a++) {
-                for (let b = 0; b < this.block_size; b++) {
-                    for (let c = 0; c < this.block_size; c++) {
+            for (let a = 0; a < this.blockSize; a++) {
+                for (let b = 0; b < this.blockSize; b++) {
+                    for (let c = 0; c < this.blockSize; c++) {
                         let acc = bias.get(a, b, c);
                         for (let i = 0; i < 3 * 3 * 3; i++) {
                             const source_idx = indices[unroll_idx++];
                             acc += input.data[source_idx] * weight.get(i, a, b, c);
                         }
                         const result = (output.get(a + 1, b + 1, c + 1) +
-                            this.activation(acc) * residual_scale.get(a, b, c));
+                            this.activation(acc) * residualScale.get(a, b, c));
                         output.set(result, a + 1, b + 1, c + 1);
                     }
                 }
@@ -392,12 +392,12 @@ class Gridnet extends Layer {
     }
     blockInputIndices() {
         const idxInBlock = (i, j, k) => {
-            return k + (this.block_size + 2) * (j + (this.block_size + 2) * i);
+            return k + (this.blockSize + 2) * (j + (this.blockSize + 2) * i);
         };
         let result = [];
-        for (let i = 0; i < this.block_size; i++) {
-            for (let j = 0; j < this.block_size; j++) {
-                for (let k = 0; k < this.block_size; k++) {
+        for (let i = 0; i < this.blockSize; i++) {
+            for (let j = 0; j < this.blockSize; j++) {
+                for (let k = 0; k < this.blockSize; k++) {
                     const row = [];
                     for (let a = 0; a < 3; a++) {
                         for (let b = 0; b < 3; b++) {
@@ -417,15 +417,15 @@ class ImagenetClassifier extends Layer {
     constructor(ckpt) {
         super();
         this.config = ckpt.config;
-        this.init_in = ckpt.params.get('init_in');
+        this.initIn = ckpt.params.get('init_in');
         this.norm = new LayerNorm(ckpt.params.get('norm.weight'), ckpt.params.get('norm.bias'));
-        this.network = new Gridnet(ckpt.params.get('network.weight'), ckpt.params.get('network.bias'), ckpt.params.get('network.residual_scale'), ckpt.config.inner_iters, 8, ckpt.config.activation);
-        this.patch_emb = new PatchEmbed(ckpt.params.get('patch_emb.weight'), ckpt.params.get('patch_emb.bias'));
+        this.network = new Gridnet(ckpt.params.get('network.weight'), ckpt.params.get('network.bias'), ckpt.params.get('network.residual_scale'), ckpt.config.innerIters, 8, ckpt.config.activation);
+        this.patchEmb = new PatchEmbed(ckpt.params.get('patch_emb.weight'), ckpt.params.get('patch_emb.bias'));
         this.readout = new Readout(new LayerNorm(ckpt.params.get('readout.norm.weight'), ckpt.params.get('readout.norm.bias')), new Linear(ckpt.params.get('readout.proj.weight'), ckpt.params.get('readout.proj.bias')));
     }
     forward(x) {
-        const emb = this.patch_emb.forward(x);
-        let h = this.init_in.clone();
+        const emb = this.patchEmb.forward(x);
+        let h = this.initIn.clone();
         for (let ch = 0; ch < emb.shape[0]; ch++) {
             for (let y = 0; y < emb.shape[1]; y++) {
                 for (let x = 0; x < emb.shape[2]; x++) {
@@ -433,8 +433,8 @@ class ImagenetClassifier extends Layer {
                 }
             }
         }
-        for (let i = 0; i < this.config.outer_iters; i++) {
-            if (this.config.outer_residual) {
+        for (let i = 0; i < this.config.outerIters; i++) {
+            if (this.config.outerIters) {
                 const norm_h = this.norm.forward(h);
                 h = h.add(this.network.forward(norm_h).sub(norm_h));
             }
