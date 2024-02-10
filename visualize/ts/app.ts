@@ -1,4 +1,6 @@
 class ImagePicker {
+    public onReadyToClassify: () => void;
+
     private static PADDING: number = 20;
 
     private uploadButton: HTMLButtonElement;
@@ -53,8 +55,6 @@ class ImagePicker {
             }
         }
 
-        document.body.appendChild(dst);
-
         return output;
     }
 
@@ -73,6 +73,9 @@ class ImagePicker {
     }
 
     private handleImage(img: HTMLImageElement) {
+        this.canvas.style.display = 'block';
+        this.onReadyToClassify();
+
         this.image = img;
         if (img.width > img.height) {
             this.offset = [(img.width - img.height) / 2, 0];
@@ -136,6 +139,7 @@ class App {
     private classifyButton: HTMLButtonElement;
     private model: ImagenetClassifier;
     private predictions: HTMLElement;
+    private readyToClassify: boolean = false;
 
     constructor() {
         this.imagePicker = new ImagePicker();
@@ -143,7 +147,19 @@ class App {
         this.predictions = document.getElementById('predictions');
         loadModel().then((model) => {
             this.model = model;
+            if (this.readyToClassify) {
+                // We loaded the model _after_ an image was picked.
+                this.classifyButton.style.display = 'block';
+            }
         });
+
+        this.imagePicker.onReadyToClassify = () => {
+            this.readyToClassify = true;
+            if (this.model) {
+                // We picked an image after the model was loaded.
+                this.classifyButton.style.display = 'block';
+            }
+        };
 
         this.classifyButton.addEventListener('click', () => {
             const img = this.imagePicker.getImage();

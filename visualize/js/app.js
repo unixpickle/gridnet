@@ -47,7 +47,6 @@ class ImagePicker {
                 output.set((b - 0.406) / 0.225, 2, y, x);
             }
         }
-        document.body.appendChild(dst);
         return output;
     }
     handleUpload() {
@@ -64,6 +63,8 @@ class ImagePicker {
         }
     }
     handleImage(img) {
+        this.canvas.style.display = 'block';
+        this.onReadyToClassify();
         this.image = img;
         if (img.width > img.height) {
             this.offset = [(img.width - img.height) / 2, 0];
@@ -120,12 +121,22 @@ class ImagePicker {
 ImagePicker.PADDING = 20;
 class App {
     constructor() {
+        this.readyToClassify = false;
         this.imagePicker = new ImagePicker();
         this.classifyButton = document.getElementById('classify-button');
         this.predictions = document.getElementById('predictions');
         loadModel().then((model) => {
             this.model = model;
+            if (this.readyToClassify) {
+                this.classifyButton.style.display = 'block';
+            }
         });
+        this.imagePicker.onReadyToClassify = () => {
+            this.readyToClassify = true;
+            if (this.model) {
+                this.classifyButton.style.display = 'block';
+            }
+        };
         this.classifyButton.addEventListener('click', () => {
             const img = this.imagePicker.getImage();
             const pred = this.model.forward(img);
