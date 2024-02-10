@@ -297,12 +297,12 @@ class PatchEmbed extends Layer {
             for (let outY = 0; outY < outSize; outY++) {
                 for (let outX = 0; outX < outSize; outX++) {
                     let accum = bias;
-                    for (let in_ch = 0; in_ch < this.inChannels; in_ch++) {
+                    for (let inCh = 0; inCh < this.inChannels; inCh++) {
                         for (let i = 0; i < this.kernelSize; i++) {
                             for (let j = 0; j < this.kernelSize; j++) {
-                                const weight = this.weight.get(outCh, in_ch, i, j);
+                                const weight = this.weight.get(outCh, inCh, i, j);
                                 const value = x.get(
-                                    in_ch,
+                                    inCh,
                                     outY * this.kernelSize + i,
                                     outX * this.kernelSize + j,
                                 );
@@ -384,15 +384,15 @@ class Readout extends Layer {
     }
 
     forward(x: Tensor): Tensor {
-        const plane_size = x.shape[0] * x.shape[1];
-        assert(this.inChannels % plane_size == 0);
-        const zLayers = this.inChannels / plane_size;
+        const planeSize = x.shape[0] * x.shape[1];
+        assert(this.inChannels % planeSize == 0);
+        const zLayers = this.inChannels / planeSize;
         const flatOut = Tensor.zeros(new Shape(this.inChannels));
-        let out_idx = 0;
+        let outIdx = 0;
         for (let i = 0; i < x.shape[0]; i++) {
             for (let j = 0; j < x.shape[1]; j++) {
                 for (let k = x.shape[2] - zLayers; k < x.shape[2]; k++) {
-                    flatOut.data[out_idx++] = x.get(i, j, k);
+                    flatOut.data[outIdx++] = x.get(i, j, k);
                 }
             }
         }
@@ -438,7 +438,7 @@ class Gridnet extends Layer {
                         [i, j, k],
                         [i + this.blockSize, j + this.blockSize, k + this.blockSize],
                     );
-                    const block_out = this.applyBlock(
+                    const blockOut = this.applyBlock(
                         inputIndices,
                         inActs,
                         weight,
@@ -448,7 +448,7 @@ class Gridnet extends Layer {
                     for (let a = 0; a < this.blockSize; a++) {
                         for (let b = 0; b < this.blockSize; b++) {
                             for (let c = 0; c < this.blockSize; c++) {
-                                const val = block_out.get(a + 1, b + 1, c + 1);
+                                const val = blockOut.get(a + 1, b + 1, c + 1);
                                 output.set(val, a + i, b + j, c + k);
                             }
                         }
@@ -465,14 +465,14 @@ class Gridnet extends Layer {
         for (let step = 0; step < this.innerActivations; step++) {
             output = input.clone();
 
-            let unroll_idx = 0;
+            let unrollIdx = 0;
             for (let a = 0; a < this.blockSize; a++) {
                 for (let b = 0; b < this.blockSize; b++) {
                     for (let c = 0; c < this.blockSize; c++) {
                         let acc = bias.get(a, b, c);
                         for (let i = 0; i < 3 * 3 * 3; i++) {
-                            const source_idx = indices[unroll_idx++];
-                            acc += input.data[source_idx] * weight.get(i, a, b, c);
+                            const sourceIdx = indices[unrollIdx++];
+                            acc += input.data[sourceIdx] * weight.get(i, a, b, c);
                         }
                         const result = (
                             output.get(a + 1, b + 1, c + 1) +
@@ -567,8 +567,8 @@ class ImagenetClassifier extends Layer {
 
         for (let i = 0; i < this.config.outerIters; i++) {
             if (this.config.outerResidual) {
-                const norm_h = this.norm.forward(h);
-                h = h.add(this.network.forward(norm_h).sub(norm_h));
+                const normH = this.norm.forward(h);
+                h = h.add(this.network.forward(normH).sub(normH));
             } else {
                 h = this.network.forward(h);
                 h = this.norm.forward(h);

@@ -27,7 +27,7 @@ class ImagePicker {
         const dst = document.createElement('canvas');
         dst.width = 256;
         dst.height = 256;
-        const imgScale = (256 - ImagePicker.PADDING * 2) / Math.min(this.image.width, this.image.height);
+        const imgScale = 256 / Math.min(this.image.width, this.image.height);
         const ctx = dst.getContext('2d');
         ctx.clearRect(0, 0, 256, 256);
         ctx.scale(imgScale, imgScale);
@@ -47,6 +47,7 @@ class ImagePicker {
                 output.set((b - 0.406) / 0.225, 2, y, x);
             }
         }
+        document.body.appendChild(dst);
         return output;
     }
     handleUpload() {
@@ -70,8 +71,8 @@ class ImagePicker {
         else {
             this.offset = [0, (img.height - img.width) / 2];
         }
-        const min_size = Math.min(img.width, img.height);
-        this.maxOffset = [img.width - min_size, img.height - min_size];
+        const minSize = Math.min(img.width, img.height);
+        this.maxOffset = [img.width - minSize, img.height - minSize];
         this.draw();
     }
     draw() {
