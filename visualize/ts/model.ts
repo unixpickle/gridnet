@@ -246,6 +246,23 @@ function activationImpl(act: Activation): (x: number) => number {
     }
 }
 
+function softmax(x: Tensor): Tensor {
+    let max = x.data[0];
+    for (let i = 0; i < x.data.length; i++) {
+        max = Math.max(max, x.data[i]);
+    }
+    let sum = 0.0;
+    const result = x.clone();
+    for (let i = 0; i < result.data.length; i++) {
+        result.data[i] = Math.exp(result.data[i] - max);
+        sum += result.data[i];
+    }
+    for (let i = 0; i < result.data.length; i++) {
+        result.data[i] /= sum;
+    }
+    return result;
+}
+
 abstract class Layer {
     abstract forward(x: Tensor): Tensor;
 }

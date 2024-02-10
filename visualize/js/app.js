@@ -121,13 +121,30 @@ class App {
     constructor() {
         this.imagePicker = new ImagePicker();
         this.classifyButton = document.getElementById('classify-button');
+        this.predictions = document.getElementById('predictions');
         loadModel().then((model) => {
             this.model = model;
         });
         this.classifyButton.addEventListener('click', () => {
             const img = this.imagePicker.getImage();
             const pred = this.model.forward(img);
-            console.log(pred);
+            const probs = softmax(pred);
+            const classes = [];
+            for (let i = 0; i < probs.data.length; i++) {
+                classes.push([probs.data[i], window.ImagenetClasses[i]]);
+            }
+            classes.sort((a, b) => b[0] - a[0]);
+            this.predictions.innerHTML = '';
+            classes.slice(0, 10).forEach((probAndCls) => {
+                const item = document.createElement('div');
+                const name = document.createElement('label');
+                name.textContent = probAndCls[1];
+                const probLabel = document.createElement('label');
+                probLabel.textContent = '' + probAndCls[0];
+                item.appendChild(name);
+                item.appendChild(probLabel);
+                this.predictions.appendChild(item);
+            });
         });
     }
 }

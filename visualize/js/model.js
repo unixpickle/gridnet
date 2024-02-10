@@ -217,6 +217,22 @@ function activationImpl(act) {
         return (x) => x < 0 ? 0.01 * x : x;
     }
 }
+function softmax(x) {
+    let max = x.data[0];
+    for (let i = 0; i < x.data.length; i++) {
+        max = Math.max(max, x.data[i]);
+    }
+    let sum = 0.0;
+    const result = x.clone();
+    for (let i = 0; i < result.data.length; i++) {
+        result.data[i] = Math.exp(result.data[i] - max);
+        sum += result.data[i];
+    }
+    for (let i = 0; i < result.data.length; i++) {
+        result.data[i] /= sum;
+    }
+    return result;
+}
 class Layer {
 }
 class PatchEmbed extends Layer {

@@ -133,10 +133,12 @@ class App {
     private imagePicker: ImagePicker;
     private classifyButton: HTMLButtonElement;
     private model: ImagenetClassifier;
+    private predictions: HTMLElement;
 
     constructor() {
         this.imagePicker = new ImagePicker();
         this.classifyButton = document.getElementById('classify-button') as HTMLButtonElement;
+        this.predictions = document.getElementById('predictions');
         loadModel().then((model) => {
             this.model = model;
         });
@@ -144,7 +146,23 @@ class App {
         this.classifyButton.addEventListener('click', () => {
             const img = this.imagePicker.getImage();
             const pred = this.model.forward(img);
-            console.log(pred);
+            const probs = softmax(pred);
+            const classes: [number, string][] = [];
+            for (let i = 0; i < probs.data.length; i++) {
+                classes.push([probs.data[i], window.ImagenetClasses[i]]);
+            }
+            classes.sort((a, b) => b[0] - a[0]);
+            this.predictions.innerHTML = '';
+            classes.slice(0, 10).forEach((probAndCls) => {
+                const item = document.createElement('div');
+                const name = document.createElement('label');
+                name.textContent = probAndCls[1];
+                const probLabel = document.createElement('label');
+                probLabel.textContent = '' + probAndCls[0];
+                item.appendChild(name);
+                item.appendChild(probLabel);
+                this.predictions.appendChild(item);
+            });
         });
     }
 }
