@@ -1,0 +1,25 @@
+html,
+body {
+    font-family: sans-serif;
+}
+
+#upload-button {
+    display: block;
+    margin: 20px auto;
+    font-size: 20px;
+    padding: 10px;
+}
+
+#image-resizer {
+    display: none;
+    margin: 20px auto;
+    width: 300px;
+    height: 300px;
+}
+
+#classify-button {
+    display: none;
+    margin: 20px auto;
+    font-size: 20px;
+    padding: 10px;
+}
