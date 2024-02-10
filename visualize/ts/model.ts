@@ -170,7 +170,12 @@ class Tensor3 extends Tensor {
         for (let i = start[0]; i < end[0]; i++) {
             for (let j = start[1]; j < end[1]; j++) {
                 for (let k = start[2]; k < end[2]; k++) {
-                    result.data[outIndex++] = this.get(i, j, k);
+                    let value = 0;
+                    if (i < this.shape[0] && j < this.shape[1] && k < this.shape[2] &&
+                        i >= 0 && j >= 0 && k >= 0) {
+                        value = this.get(i, j, k);
+                    }
+                    result.data[outIndex++] = value;
                 }
             }
         }
@@ -544,7 +549,7 @@ class ImagenetClassifier extends Layer {
         }
 
         for (let i = 0; i < this.config.outerIters; i++) {
-            if (this.config.outerIters) {
+            if (this.config.outerResidual) {
                 const norm_h = this.norm.forward(h);
                 h = h.add(this.network.forward(norm_h).sub(norm_h));
             } else {
