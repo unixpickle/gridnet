@@ -23,3 +23,39 @@ body {
     font-size: 20px;
     padding: 10px;
 }
+
+.predictions-row {
+    display: block;
+    margin: 10px auto;
+    width: 300px;
+}
+
+.predictions-row-label {
+    display: block;
+    width: 100%;
+    word-wrap: break-word;
+}
+
+.predictions-row-prob-bar {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 35px;
+    background-color: #f0f0f0;
+}
+
+.predictions-row-prob-bar-inner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background-color: #65bcd4;
+}
+
+.predictions-row-prob-label {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 5px;
+    line-height: 35px;
+}
