@@ -1,16 +1,14 @@
 class ImagePicker {
     public onReadyToClassify: () => void;
 
-    private static PADDING: number = 20;
-
     private uploadButton: HTMLButtonElement;
     private canvas: HTMLCanvasElement;
     private input: HTMLInputElement;
 
     // State of the picker.
     private image: HTMLImageElement = null;
+    private scale: number = 1.0;
     private offset: [number, number] = null;
-    private maxOffset: [number, number] = null;
 
     constructor() {
         this.uploadButton = document.getElementById('upload-button') as HTMLButtonElement;
@@ -30,13 +28,13 @@ class ImagePicker {
         dst.width = 256;
         dst.height = 256;
 
-        const imgScale = 256 / Math.min(this.image.width, this.image.height);
+        const imgScale = this.scale * (256 / Math.min(this.image.width, this.image.height));
 
         const ctx = dst.getContext('2d');
 
         ctx.clearRect(0, 0, 256, 256);
-        ctx.scale(imgScale, imgScale);
         ctx.translate(-this.offset[0], -this.offset[1]);
+        ctx.scale(imgScale, imgScale);
         ctx.drawImage(this.image, 0, 0);
 
         const data = ctx.getImageData(0, 0, 256, 256);
@@ -82,8 +80,6 @@ class ImagePicker {
         } else {
             this.offset = [0, (img.height - img.width) / 2];
         }
-        const minSize = Math.min(img.width, img.height);
-        this.maxOffset = [img.width - minSize, img.height - minSize];
         this.draw();
     }
 
@@ -96,41 +92,72 @@ class ImagePicker {
         }
 
         const windowSize = this.canvas.width;
-        const imgScale = (windowSize - ImagePicker.PADDING * 2) / Math.min(this.image.width, this.image.height);
+        const imgScale = this.scale * (windowSize / Math.min(this.image.width, this.image.height));
 
         const ctx = this.canvas.getContext('2d');
         ctx.clearRect(0, 0, windowSize, windowSize);
         ctx.save();
-        ctx.translate(ImagePicker.PADDING, ImagePicker.PADDING);
         ctx.scale(imgScale, imgScale);
         ctx.translate(-this.offset[0], -this.offset[1]);
         ctx.drawImage(this.image, 0, 0);
         ctx.restore();
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-        ctx.fillRect(ImagePicker.PADDING, 0, windowSize - ImagePicker.PADDING * 2, ImagePicker.PADDING);
-        ctx.fillRect(0, 0, ImagePicker.PADDING, windowSize);
-        ctx.fillRect(windowSize - ImagePicker.PADDING, 0, ImagePicker.PADDING, windowSize);
-        ctx.fillRect(ImagePicker.PADDING, windowSize - ImagePicker.PADDING, windowSize - ImagePicker.PADDING * 2, ImagePicker.PADDING);
     }
 
     private setupPointerEvents() {
         this.canvas.addEventListener('mousedown', (startEvent: MouseEvent) => {
-            const start_offset = this.offset;
+            const startOffset = this.offset;
             const moveEvent = (moveEvent: MouseEvent) => {
                 const deltaX = moveEvent.clientX - startEvent.clientX;
                 const deltaY = moveEvent.clientY - startEvent.clientY;
+                const rectSize = this.canvas.getBoundingClientRect();
+                const relScale = Math.min(this.image.width, this.image.height) / (
+                    rectSize.width * this.scale
+                );
                 this.offset = [
-                    Math.min(this.maxOffset[0], Math.max(0, start_offset[0] - deltaX)),
-                    Math.min(this.maxOffset[1], Math.max(0, start_offset[1] - deltaY)),
+                    startOffset[0] - relScale * deltaX,
+                    startOffset[1] - relScale * deltaY,
                 ];
+                this.constrainOffset();
                 this.draw();
+                moveEvent.preventDefault();
+                moveEvent.stopPropagation();
             };
             window.addEventListener('mousemove', moveEvent);
             window.addEventListener('mouseup', () => {
                 window.removeEventListener('mousemove', moveEvent);
             });
         });
+        this.canvas.addEventListener('mousewheel', (e: WheelEvent) => {
+            const minSize = Math.min(this.image.width, this.image.height);
+            const oldViewportSize = minSize / this.scale;
+
+            this.scale *= Math.exp(-e.deltaY / 500);
+            if (this.scale < 1) {
+                this.scale = 1.0;
+            }
+            const newViewportSize = minSize / this.scale;
+
+            const centerDelta = (oldViewportSize - newViewportSize) / 2;
+            this.offset[0] += centerDelta;
+            this.offset[1] += centerDelta;
+            this.constrainOffset();
+
+            this.draw();
+        });
+    }
+
+    private constrainOffset() {
+        const maxOffset = this.maxOffset();
+        this.offset = [
+            Math.min(maxOffset[0], Math.max(0, this.offset[0])),
+            Math.min(maxOffset[1], Math.max(0, this.offset[1])),
+        ];
+    }
+
+    private maxOffset(): [number, number] {
+        const minSize = Math.min(this.image.width, this.image.height);
+        const viewportSize = minSize / this.scale;
+        return [this.image.width - viewportSize, this.image.height - viewportSize];
     }
 }
 
