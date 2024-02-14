@@ -15,6 +15,7 @@ body {
     margin: 20px auto;
     width: 300px;
     height: 300px;
+    cursor: all-scroll;
 }
 
 #classify-button {
