@@ -25,7 +25,9 @@ class ImagePicker {
         document.body.appendChild(this.input);
         this.uploadButton.addEventListener('click', () => this.input.click());
         this.input.addEventListener('input', () => this.handleUpload());
+
         this.setupPointerEvents();
+        this.setupTouchEvents();
     }
 
     public getImage(): Tensor3 {
@@ -145,12 +147,95 @@ class ImagePicker {
 
             // Preserve the image coordinate corresponding to the
             // cursor position in the image.
-            this.offset[0] += oldCursorX - newCursorX;
-            this.offset[1] += oldCursorY - newCursorY;
+            this.offset = [
+                this.offset[0] + oldCursorX - newCursorX,
+                this.offset[1] + oldCursorY - newCursorY,
+            ];
             this.constrainOffset();
 
             this.draw();
         });
+    }
+
+    private setupTouchEvents() {
+        const prevPositions = new Map<number, [number, number]>();
+
+        const updatePositions = (e: TouchEvent) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                prevPositions.set(touch.identifier, [touch.clientX, touch.clientY]);
+            }
+        };
+
+        this.canvas.addEventListener('touchstart', (startEvent: TouchEvent) => {
+            startEvent.preventDefault();
+            startEvent.stopPropagation();
+            updatePositions(startEvent);
+        });
+
+        this.canvas.addEventListener('touchmove', (e: TouchEvent) => {
+            const rect = this.canvas.getBoundingClientRect();
+            if (e.touches.length == 1) {
+                const [prevX, prevY] = prevPositions.get(e.touches[0].identifier);
+                const deltaX = e.touches[0].clientX - prevX;
+                const deltaY = e.touches[0].clientY - prevY;
+                this.offset = [
+                    this.offset[0] - this.scaleClientToImage(deltaX),
+                    this.offset[1] - this.scaleClientToImage(deltaY),
+                ];
+                this.constrainOffset();
+                this.draw();
+            } else if (e.touches.length == 2) {
+                const oldP1 = prevPositions.get(e.touches[0].identifier);
+                const oldP2 = prevPositions.get(e.touches[1].identifier);
+                const oldCenter = [(oldP2[0] + oldP1[0]) / 2, (oldP2[1] + oldP1[1]) / 2];
+                const oldDist = Math.sqrt(
+                    Math.pow(oldP2[0] - oldP1[0], 2) + Math.pow(oldP2[1] - oldP1[1], 2),
+                );
+
+                const newCenter = [
+                    (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                    (e.touches[0].clientY + e.touches[1].clientY) / 2,
+                ];
+                const newDist = Math.sqrt(
+                    Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) +
+                    Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2)
+                );
+
+                // Translate the image so that the center of the two fingers
+                // is not moved.
+                const oldImageCenter = [
+                    this.scaleClientToImage(oldCenter[0] - rect.left),
+                    this.scaleClientToImage(oldCenter[1] - rect.top),
+                ];
+                this.scale *= (newDist / oldDist);
+                if (this.scale < 1) {
+                    this.scale = 1;
+                }
+                const newImageCenter = [
+                    this.scaleClientToImage(newCenter[0] - rect.left),
+                    this.scaleClientToImage(newCenter[1] - rect.top),
+                ];
+
+                this.offset = [
+                    this.offset[0] + oldImageCenter[0] - newImageCenter[0],
+                    this.offset[1] + oldImageCenter[1] - newImageCenter[1],
+                ];
+                this.constrainOffset();
+
+                this.draw();
+            }
+
+            updatePositions(e);
+        });
+
+        const deleteTouch = (e: TouchEvent) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                prevPositions.delete(e.changedTouches[i].identifier);
+            }
+        };
+        this.canvas.addEventListener('touchend', deleteTouch);
+        this.canvas.addEventListener('touchcancel', deleteTouch);
     }
 
     private constrainOffset() {
