@@ -3,3 +3,5 @@ diffs/
 .pytest_cache/
 *.egg-info
 checkpoints/
+node_modules/
+
