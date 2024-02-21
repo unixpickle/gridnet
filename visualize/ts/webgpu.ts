@@ -106,6 +106,10 @@ class KernelSequence {
             device = await adapter.requestDevice();
         }
 
+        device.pushErrorScope('validation');
+        device.pushErrorScope('internal');
+        device.pushErrorScope('out-of-memory');
+
         this.createDeviceBuffers(device)
 
         const encoder = device.createCommandEncoder();
