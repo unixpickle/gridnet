@@ -112,7 +112,7 @@ class KernelSequence {
             for (let i = 0; i < 3; i++) {
                 const error = yield device.popErrorScope();
                 if (error) {
-                    throw new Error('error from kernel call: ' + error);
+                    throw error;
                 }
             }
             yield this.copyResults();
