@@ -1,10 +1,10 @@
 @group(0) @binding(0) var<storage, read> numInputs: u32;
-@group(0) @binding(1) var<storage, read_write> inputs: array<f32>;
+@group(0) @binding(1) var<storage, read> inputs: array<f32>;
 @group(0) @binding(2) var<storage, read_write> outputs: array<f32>;
 @group(0) @binding(3) var<storage, read> weight: array<f32>;
 @group(0) @binding(4) var<storage, read> bias: array<f32>;
-@group(0) @binding(5) var<storage, read_write> sum: f32;
-@group(0) @binding(6) var<storage, read_write> sqSum: f32;
+@group(0) @binding(5) var<storage, read> sum: f32;
+@group(0) @binding(6) var<storage, read> sqSum: f32;
 
 // Perform an affine transformation and normalization.
 @compute @workgroup_size(256)

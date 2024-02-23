@@ -1,6 +1,11 @@
 type CPUArray = Float32Array | Uint32Array;
 type CPUArrayConstructor = Float32ArrayConstructor | Uint32ArrayConstructor;
 
+interface BindingArg {
+    layout(): GPUBufferBindingLayout;
+    buffer(): Buffer;
+}
+
 class Buffer {
     // Created when we execute the kernel.
     public deviceBuffer: GPUBuffer = null;
@@ -29,13 +34,42 @@ class Buffer {
         new ctr(arrayBuffer).set(this.input);
         this.deviceBuffer.unmap();
     }
+
+    layout(): GPUBufferBindingLayout {
+        return {
+            type: this.writable ? 'storage' : 'read-only-storage',
+        }
+    }
+
+    buffer(): Buffer {
+        return this;
+    }
+
+    readOnly(): ReadOnlyBuffer {
+        return new ReadOnlyBuffer(this);
+    }
+}
+
+class ReadOnlyBuffer {
+    constructor(private _buffer: Buffer) {
+    }
+
+    layout(): GPUBufferBindingLayout {
+        return {
+            type: 'read-only-storage',
+        }
+    }
+
+    buffer(): Buffer {
+        return this._buffer;
+    }
 }
 
 class ComputePass {
     constructor(
         public code: string,
         public entrypoint: string,
-        public bindings: Buffer[],
+        public bindings: BindingArg[],
         public gridSize: [number] | [number, number] | [number, number, number],
     ) {
     }
@@ -73,9 +107,7 @@ class ComputePass {
                 return {
                     binding: i,
                     visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: buf.writable ? 'storage' : 'read-only-storage',
-                    },
+                    buffer: buf.layout(),
                 };
             })
         };
@@ -86,7 +118,7 @@ class ComputePass {
             return {
                 binding: i,
                 resource: {
-                    buffer: buf.deviceBuffer,
+                    buffer: buf.buffer().deviceBuffer,
                 },
             };
         });
@@ -170,11 +202,113 @@ class KernelSequence {
         const results: Buffer[] = [];
         this.passes.forEach((pass) => {
             pass.bindings.forEach((buf) => {
-                if (!results.includes(buf)) {
-                    results.push(buf);
+                if (!results.includes(buf.buffer())) {
+                    results.push(buf.buffer());
                 }
             })
         });
         return results;
     }
+}
+
+async function fetchKernel(name: string): Promise<string> {
+    return await (await fetch(`/glsl/${name}`)).text();
+}
+
+async function webgpuLayerNorm(
+    input: Buffer,
+    output: Buffer,
+    weight: Buffer,
+    bias: Buffer,
+): Promise<ComputePass[]> {
+    const statsCode = await fetchKernel('moments.glsl');
+    const affineCode = await fetchKernel('affine.glsl');
+
+    const inBuffer = input.readOnly();
+
+    let moment1 = new Buffer(new Float32Array(1024), null, true);
+    let moment2 = new Buffer(new Float32Array(1024), null, true);
+    let moment1Tmp = new Buffer(new Float32Array(1024), null, true);
+    let moment2Tmp = new Buffer(new Float32Array(1024), null, true);
+    const unused = new Buffer(new Float32Array(1), null, true);
+
+    const inputSize = input.input.length;
+    const sizeBuffer = new Buffer(new Uint32Array([inputSize]));
+
+    const isFirstTrue = new Buffer(new Uint32Array([1]));
+    const isFirstFalse = new Buffer(new Uint32Array([0]));
+
+    let numBlocks = Math.ceil(inputSize / 256);
+    const passes: ComputePass[] = [
+        new ComputePass(
+            statsCode,
+            'reduceMoments',
+            [
+                isFirstTrue,
+                sizeBuffer,
+                inBuffer,
+                moment1,
+                moment2,
+            ],
+            [numBlocks],
+        ),
+    ];
+
+    while (numBlocks > 1) {
+        const newNumBlocks = Math.ceil(numBlocks / 256);
+        const countBuf = new Buffer(new Uint32Array([numBlocks]));
+        passes.push(new ComputePass(
+            statsCode,
+            'reduceMoments',
+            [
+                isFirstFalse,
+                countBuf,
+                moment1.readOnly(),
+                moment1Tmp,
+                unused,
+            ],
+            [newNumBlocks],
+        ));
+        passes.push(new ComputePass(
+            statsCode,
+            'reduceMoments',
+            [
+                isFirstFalse,
+                countBuf,
+                moment2.readOnly(),
+                moment2Tmp,
+                unused,
+            ],
+            [newNumBlocks],
+        ));
+
+        numBlocks = newNumBlocks;
+        let tmp = moment1;
+        moment1 = moment1Tmp;
+        moment1Tmp = tmp;
+        tmp = moment2;
+        moment2 = moment2Tmp;
+        moment2Tmp = tmp;
+
+        // Not sure why this doesn't type check:
+        // moment1, moment1Tmp = [moment1Tmp, moment1];
+        // moment2, moment2Tmp = [moment2Tmp, moment2];
+    }
+
+    passes.push(new ComputePass(
+        affineCode,
+        'affine',
+        [
+            sizeBuffer,
+            inBuffer,
+            output,
+            weight,
+            bias,
+            moment1.readOnly(),
+            moment2.readOnly(),
+        ],
+        [Math.ceil(inputSize / 256)],
+    ));
+
+    return passes;
 }

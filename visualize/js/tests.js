@@ -43,8 +43,6 @@ function testWebGPUPatchEmbed() {
 }
 function testWebGPULayerNorm() {
     return __awaiter(this, void 0, void 0, function* () {
-        const statsCode = yield (yield fetch('/glsl/moments.glsl')).text();
-        const affineCode = yield (yield fetch('/glsl/affine.glsl')).text();
         const input = Tensor.zeros(new Shape(64, 64, 64));
         const weight = Tensor.zeros(new Shape(64, 64, 64));
         const bias = Tensor.zeros(new Shape(64, 64, 64));
@@ -54,59 +52,7 @@ function testWebGPULayerNorm() {
         const cpuLayer = new LayerNorm(weight, bias);
         const expectedOutput = cpuLayer.forward(input);
         const output = Tensor.zeros(new Shape(64, 64, 64));
-        const sizeBuffer = new Buffer(new Uint32Array([64 * 64 * 64]));
-        const inBuffer = new Buffer(input.data, null, true);
-        const tmp1 = new Buffer(new Float32Array(1024), new Float32Array(1024));
-        const tmp2 = new Buffer(new Float32Array(1024), new Float32Array(1024));
-        const tmp3 = new Buffer(new Float32Array(4), null, true);
-        const tmp4 = new Buffer(new Float32Array(4), null, true);
-        const unused = new Buffer(new Float32Array(1), null, true);
-        const sequence = new KernelSequence([
-            new ComputePass(statsCode, 'reduceMoments', [
-                new Buffer(new Uint32Array([1])),
-                sizeBuffer,
-                inBuffer,
-                tmp1,
-                tmp2,
-            ], [1024]),
-            new ComputePass(statsCode, 'reduceMoments', [
-                new Buffer(new Uint32Array([0])),
-                new Buffer(new Uint32Array([1024])),
-                tmp1,
-                tmp3,
-                unused,
-            ], [4]),
-            new ComputePass(statsCode, 'reduceMoments', [
-                new Buffer(new Uint32Array([0])),
-                new Buffer(new Uint32Array([1024])),
-                tmp2,
-                tmp4,
-                unused,
-            ], [4]),
-            new ComputePass(statsCode, 'reduceMoments', [
-                new Buffer(new Uint32Array([0])),
-                new Buffer(new Uint32Array([4])),
-                tmp3,
-                tmp1,
-                unused,
-            ], [1]),
-            new ComputePass(statsCode, 'reduceMoments', [
-                new Buffer(new Uint32Array([0])),
-                new Buffer(new Uint32Array([4])),
-                tmp4,
-                tmp2,
-                unused,
-            ], [1]),
-            new ComputePass(affineCode, 'affine', [
-                sizeBuffer,
-                inBuffer,
-                new Buffer(output.data, output.data),
-                new Buffer(weight.data),
-                new Buffer(bias.data),
-                tmp1,
-                tmp2,
-            ], [1024]),
-        ]);
+        const sequence = new KernelSequence(yield webgpuLayerNorm(new Buffer(input.data), new Buffer(output.data, output.data), new Buffer(weight.data), new Buffer(bias.data)));
         yield sequence.execute();
         let maxError = 0.0;
         for (let z = 0; z < 64; z++) {

@@ -29,6 +29,30 @@ class Buffer {
         new ctr(arrayBuffer).set(this.input);
         this.deviceBuffer.unmap();
     }
+    layout() {
+        return {
+            type: this.writable ? 'storage' : 'read-only-storage',
+        };
+    }
+    buffer() {
+        return this;
+    }
+    readOnly() {
+        return new ReadOnlyBuffer(this);
+    }
+}
+class ReadOnlyBuffer {
+    constructor(_buffer) {
+        this._buffer = _buffer;
+    }
+    layout() {
+        return {
+            type: 'read-only-storage',
+        };
+    }
+    buffer() {
+        return this._buffer;
+    }
 }
 class ComputePass {
     constructor(code, entrypoint, bindings, gridSize) {
@@ -67,9 +91,7 @@ class ComputePass {
                 return {
                     binding: i,
                     visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: buf.writable ? 'storage' : 'read-only-storage',
-                    },
+                    buffer: buf.layout(),
                 };
             })
         };
@@ -79,7 +101,7 @@ class ComputePass {
             return {
                 binding: i,
                 resource: {
-                    buffer: buf.deviceBuffer,
+                    buffer: buf.buffer().deviceBuffer,
                 },
             };
         });
@@ -150,12 +172,78 @@ class KernelSequence {
         const results = [];
         this.passes.forEach((pass) => {
             pass.bindings.forEach((buf) => {
-                if (!results.includes(buf)) {
-                    results.push(buf);
+                if (!results.includes(buf.buffer())) {
+                    results.push(buf.buffer());
                 }
             });
         });
         return results;
     }
+}
+function fetchKernel(name) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return yield (yield fetch(`/glsl/${name}`)).text();
+    });
+}
+function webgpuLayerNorm(input, output, weight, bias) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const statsCode = yield fetchKernel('moments.glsl');
+        const affineCode = yield fetchKernel('affine.glsl');
+        const inBuffer = input.readOnly();
+        let moment1 = new Buffer(new Float32Array(1024), null, true);
+        let moment2 = new Buffer(new Float32Array(1024), null, true);
+        let moment1Tmp = new Buffer(new Float32Array(1024), null, true);
+        let moment2Tmp = new Buffer(new Float32Array(1024), null, true);
+        const unused = new Buffer(new Float32Array(1), null, true);
+        const inputSize = input.input.length;
+        const sizeBuffer = new Buffer(new Uint32Array([inputSize]));
+        const isFirstTrue = new Buffer(new Uint32Array([1]));
+        const isFirstFalse = new Buffer(new Uint32Array([0]));
+        let numBlocks = Math.ceil(inputSize / 256);
+        const passes = [
+            new ComputePass(statsCode, 'reduceMoments', [
+                isFirstTrue,
+                sizeBuffer,
+                inBuffer,
+                moment1,
+                moment2,
+            ], [numBlocks]),
+        ];
+        while (numBlocks > 1) {
+            const newNumBlocks = Math.ceil(numBlocks / 256);
+            const countBuf = new Buffer(new Uint32Array([numBlocks]));
+            passes.push(new ComputePass(statsCode, 'reduceMoments', [
+                isFirstFalse,
+                countBuf,
+                moment1.readOnly(),
+                moment1Tmp,
+                unused,
+            ], [newNumBlocks]));
+            passes.push(new ComputePass(statsCode, 'reduceMoments', [
+                isFirstFalse,
+                countBuf,
+                moment2.readOnly(),
+                moment2Tmp,
+                unused,
+            ], [newNumBlocks]));
+            numBlocks = newNumBlocks;
+            let tmp = moment1;
+            moment1 = moment1Tmp;
+            moment1Tmp = tmp;
+            tmp = moment2;
+            moment2 = moment2Tmp;
+            moment2Tmp = tmp;
+        }
+        passes.push(new ComputePass(affineCode, 'affine', [
+            sizeBuffer,
+            inBuffer,
+            output,
+            weight,
+            bias,
+            moment1.readOnly(),
+            moment2.readOnly(),
+        ], [Math.ceil(inputSize / 256)]));
+        return passes;
+    });
 }
 //# sourceMappingURL=webgpu.js.map

@@ -1,6 +1,6 @@
 @group(0) @binding(0) var<storage, read> isFirst: u32;
 @group(0) @binding(1) var<storage, read> numInputs: u32;
-@group(0) @binding(2) var<storage, read_write> inputs: array<f32>;
+@group(0) @binding(2) var<storage, read> inputs: array<f32>;
 @group(0) @binding(3) var<storage, read_write> sumOut: array<f32>;
 @group(0) @binding(4) var<storage, read_write> sqSumOut: array<f32>;
 
