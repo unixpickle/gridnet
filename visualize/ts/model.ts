@@ -408,7 +408,7 @@ class Gridnet extends Layer {
         private weight: Tensor,
         private bias: Tensor,
         private residualScale: Tensor,
-        private innerActivations: number,
+        private innerIterations: number,
         private blockSize: number,
         activation: Activation,
     ) {
@@ -462,7 +462,7 @@ class Gridnet extends Layer {
     private applyBlock(indices: number[], inActs: Tensor, weight: Tensor, bias: Tensor, residualScale: Tensor): Tensor {
         let input = inActs;
         let output = inActs;
-        for (let step = 0; step < this.innerActivations; step++) {
+        for (let step = 0; step < this.innerIterations; step++) {
             output = input.clone();
 
             let unrollIdx = 0;

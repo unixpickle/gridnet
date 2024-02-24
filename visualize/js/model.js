@@ -354,12 +354,12 @@ class Readout extends Layer {
     }
 }
 class Gridnet extends Layer {
-    constructor(weight, bias, residualScale, innerActivations, blockSize, activation) {
+    constructor(weight, bias, residualScale, innerIterations, blockSize, activation) {
         super();
         this.weight = weight;
         this.bias = bias;
         this.residualScale = residualScale;
-        this.innerActivations = innerActivations;
+        this.innerIterations = innerIterations;
         this.blockSize = blockSize;
         this.activation = activationImpl(activation);
     }
@@ -390,7 +390,7 @@ class Gridnet extends Layer {
     applyBlock(indices, inActs, weight, bias, residualScale) {
         let input = inActs;
         let output = inActs;
-        for (let step = 0; step < this.innerActivations; step++) {
+        for (let step = 0; step < this.innerIterations; step++) {
             output = input.clone();
             let unrollIdx = 0;
             for (let a = 0; a < this.blockSize; a++) {

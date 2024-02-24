@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 function testWebGPUPatchEmbed() {
     return __awaiter(this, void 0, void 0, function* () {
-        const patchEmbCode = yield (yield fetch('/glsl/patch_embed.glsl')).text();
+        const patchEmbCode = yield fetchKernel('patch_embed.glsl');
         const weight = Tensor.zeros(new Shape(8, 3, 4, 4));
         const bias = Tensor.zeros(new Shape(8));
         const input = Tensor.zeros(new Shape(3, 256, 256));
@@ -64,7 +64,46 @@ function testWebGPULayerNorm() {
                 }
             }
         }
-        console.log('LayerNorm embed MAE:', maxError);
+        console.log('LayerNorm MAE:', maxError);
+    });
+}
+function testWebGPUGridnet() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const input = Tensor.zeros(new Shape(64, 64, 64));
+        const weight = Tensor.zeros(new Shape(27, 64, 64, 64));
+        const bias = Tensor.zeros(new Shape(64, 64, 64));
+        const scale = Tensor.zeros(new Shape(64, 64, 64));
+        randomize(input);
+        randomize(weight);
+        randomize(bias);
+        randomize(scale);
+        const iters = 6;
+        const cpuLayer = new Gridnet(weight, bias, scale, iters, 8, 'leaky_relu');
+        const expectedOutput = cpuLayer.forward(input);
+        const output = input.clone();
+        const sequence = new KernelSequence([
+            new ComputePass(yield fetchKernel('gridnet.glsl'), 'gridnet8x8x8', [
+                new Buffer(new Uint32Array([iters])),
+                new Buffer(new Uint32Array([64])),
+                new Buffer(input.data),
+                new Buffer(output.data, output.data),
+                new Buffer(weight.data),
+                new Buffer(bias.data),
+                new Buffer(scale.data),
+            ], [8 * 8 * 8])
+        ]);
+        yield sequence.execute();
+        let maxError = 0.0;
+        for (let z = 0; z < 64; z++) {
+            for (let y = 0; y < 64; y++) {
+                for (let x = 0; x < 64; x++) {
+                    const actual = output.get(z, y, x);
+                    const expected = expectedOutput.get(z, y, x);
+                    maxError = Math.max(maxError, Math.abs(actual - expected));
+                }
+            }
+        }
+        console.log('Gridnet MAE:', maxError);
     });
 }
 function randomize(t) {
