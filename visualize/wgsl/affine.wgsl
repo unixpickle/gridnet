@@ -12,21 +12,21 @@ fn affine(
     @builtin(workgroup_id) ctaId: vec3u,
     @builtin(local_invocation_index) tid: u32,
 ) {
-    var localValue: f32 = 0.0;
-    var localWeight: f32 = 0.0;
-    var localBias: f32 = 0.0;
-    let globalIndex = tid + ctaId.x*256;
+    var localValue = 0.0;
+    var localWeight = 0.0;
+    var localBias = 0.0;
+    let globalIndex = tid + 256 * ctaId.x;
     if (globalIndex < numInputs) {
         localValue = inputs[globalIndex];
         localWeight = weight[globalIndex];
         localBias = bias[globalIndex];
     }
 
-    let mean: f32 = sum / f32(numInputs);
-    let sqMean: f32 = sqSum / f32(numInputs);
+    let mean = sum / f32(numInputs);
+    let sqMean = sqSum / f32(numInputs);
     let stddev = sqrt(max(0, sqMean - mean*mean + 1e-5));
 
-    let output = (localValue-mean)/stddev * localWeight + localBias;
+    let output = ((localValue - mean) / stddev) * localWeight + localBias;
     if (globalIndex < numInputs) {
         outputs[globalIndex] = output;
     }

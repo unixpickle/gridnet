@@ -24,12 +24,13 @@ fn gridnet8x8x8(
     @builtin(workgroup_id) ctaId: vec3u,
     @builtin(local_invocation_index) tid: u32,
 ) {
-    let blockSize: u32 = 8;
+    const blockSize = 8u;
+
     let blockX = ctaId.x % (gridSize / blockSize);
     let blockY = (ctaId.x / (gridSize / blockSize)) % (gridSize / blockSize);
     let blockZ = (ctaId.x / (gridSize / blockSize)) / (gridSize / blockSize);
-    let activationsSize: u32 = (blockSize + 2) * (blockSize + 2) * (blockSize + 2);
-    for (var i = u32(0); i < activationsSize; i += 256) {
+    let activationsSize = (blockSize + 2) * (blockSize + 2) * (blockSize + 2);
+    for (var i = 0u; i < activationsSize; i += 256) {
         let offset = tid + i;
         let globalX = (offset % (blockSize + 2)) + blockX * blockSize;
         let globalY = (offset / (blockSize + 2)) % (blockSize + 2) + blockY * blockSize;
@@ -38,7 +39,7 @@ fn gridnet8x8x8(
         if (globalX > 0 && globalY > 0 && globalZ > 0 &&
             globalX <= gridSize && globalY <= gridSize && globalZ <= gridSize) {
             loadedValue = activationsIn[globalX - 1 + gridSize * (
-                (globalZ - 1) * gridSize + (globalY - 1)
+                (globalY - 1) + gridSize * (globalZ - 1)
             )];
         }
         if (offset < activationsSize) {
@@ -57,7 +58,7 @@ fn gridnet8x8x8(
     var localBiases: array<f32, 2> = array<f32, 2>();
     var localScales: array<f32, 2> = array<f32, 2>();
 
-    for (var i = u32(0); i < 27; i++) {
+    for (var i = 0u; i < 27; i++) {
         localWeights[i] = weight[blockX*blockSize + threadX + gridSize * (
             (i*gridSize + blockZ*blockSize + threadZ)*gridSize + blockY*blockSize + threadY
         )];
@@ -65,30 +66,29 @@ fn gridnet8x8x8(
             (i*gridSize + blockZ*blockSize + threadZ)*gridSize + blockY*blockSize + threadY
         )];
     }
-    for (var i = u32(0); i < 2; i++) {
-        localBiases[i] = bias[blockX*blockSize + threadX + i + gridSize * (
-            (blockZ*blockSize + threadZ)*gridSize + blockY*blockSize + threadY
-        )];
-        localScales[i] = scale[blockX*blockSize + threadX + i + gridSize * (
-            (blockZ*blockSize + threadZ)*gridSize + blockY*blockSize + threadY
-        )];
+    for (var i = 0u; i < 2; i++) {
+        let idx = blockX*blockSize + threadX + i + gridSize * (
+            blockY*blockSize + threadY + gridSize * (blockZ*blockSize + threadZ)
+        );
+        localBiases[i] = bias[idx];
+        localScales[i] = scale[idx];
     }
 
     let firstOffset = threadX + 1 + (blockSize + 2) * (
         threadY + 1 + (blockSize + 2) * (threadZ + 1)
     );
     let paddedOffset: array<u32, 2> = array<u32, 2>(firstOffset, firstOffset + 1);
-    for (var i: u32 = 0; i < iterations; i++) {
+    for (var i = 0u; i < iterations; i++) {
         // Wait for activations to be available.
         workgroupBarrier();
 
         var output: array<f32, 2> = array<f32, 2>();
-        for (var j: u32 = 0; j < 2; j++) {
+        for (var j = 0u; j < 2; j++) {
             let localAct = sharedActivations[paddedOffset[j]];
             var dot = localBiases[j];
-            for (var a = u32(0); a < 3; a++) {
-                for (var b = u32(0); b < 3; b++) {
-                    for (var c = u32(0); c < 3; c++) {
+            for (var a = 0u; a < 3; a++) {
+                for (var b = 0u; b < 3; b++) {
+                    for (var c = 0u; c < 3; c++) {
                         let cellOffset = threadX + j + c + (blockSize + 2) * (
                             threadY + b + (blockSize + 2) * (threadZ + a)
                         );
@@ -104,16 +104,16 @@ fn gridnet8x8x8(
         // Don't overwrite activations while dot products are
         // still being computed.
         workgroupBarrier();
-        for (var j: u32 = 0; j < 2; j++) {
+        for (var j = 0u; j < 2; j++) {
             sharedActivations[paddedOffset[j]] = output[j];
         }
     }
     workgroupBarrier();
 
     // Write the final activations.
-    for (var j = u32(0); j < 2; j++) {
+    for (var j = 0u; j < 2; j++) {
         activationsOut[
-            blockX*blockSize + threadX + j + gridSize * (
+            blockX * blockSize + threadX + j + gridSize * (
                 (blockY * blockSize + threadY) + gridSize * (blockZ * blockSize + threadZ)
             )
         ] = sharedActivations[paddedOffset[j]];

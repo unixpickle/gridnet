@@ -20,23 +20,23 @@ fn patchEmbedStandard4x4(
     let outChannel = tid % 8;
     let localBias: f32 = bias[outChannel];
     var localWeights: array<f32, 4*4*3> = array<f32, 4*4*3>();
-    for (var i: u32 = 0; i < 4*4*3; i++) {
+    for (var i = 0u; i < 4*4*3; i++) {
         localWeights[i] = weight[outChannel*4*4*3 + i];
     }
 
     let row = ctaId.x;
-    let firstCol: u32 = tid / 8;
+    let firstCol = tid / 8;
     for (var col = firstCol; col < 64; col += 4) {
-        var sum: f32 = localBias;
-        for (var ch: u32 = 0; ch < 3; ch++) {
-            for (var i: u32 = 0; i < 4; i++) {
-                for (var j: u32 = 0; j < 4; j++) {
-                    let input = inputs[(ch*256 + (row*4+i))*256 + col*4 + j];
-                    let w = localWeights[(ch*4 + i)*4 + j];
+        var sum = localBias;
+        for (var ch = 0u; ch < 3; ch++) {
+            for (var i = 0u; i < 4; i++) {
+                for (var j = 0u; j < 4; j++) {
+                    let input = inputs[col*4 + j + 256 * ((row * 4 + i) + 256 * ch)];
+                    let w = localWeights[j + 4 * (i + 4 * ch)];
                     sum += input * w;
                 }
             }
         }
-        outputs[(row*64 + col)*64 + outChannel] = sum;
+        outputs[outChannel + 64 * (col + 64*row)] = sum;
     }
 }
