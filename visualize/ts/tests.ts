@@ -1,5 +1,5 @@
 async function testWebGPUPatchEmbed() {
-    const patchEmbCode = await fetchKernel('patch_embed.glsl');
+    const patchEmbCode = await fetchKernel('patch_embed.wgsl');
 
     const weight = Tensor.zeros(new Shape(8, 3, 4, 4));
     const bias = Tensor.zeros(new Shape(8));
@@ -92,7 +92,7 @@ async function testWebGPUGridnet() {
 
     const sequence = new KernelSequence([
         new ComputePass(
-            await fetchKernel('gridnet.glsl'),
+            await fetchKernel('gridnet.wgsl'),
             'gridnet8x8x8',
             [
                 new Buffer(new Uint32Array([iters])),

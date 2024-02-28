@@ -212,7 +212,7 @@ class KernelSequence {
 }
 
 async function fetchKernel(name: string): Promise<string> {
-    return await (await fetch(`/glsl/${name}`)).text();
+    return await (await fetch(`/wgsl/${name}`)).text();
 }
 
 async function webgpuLayerNorm(
@@ -221,8 +221,8 @@ async function webgpuLayerNorm(
     weight: Buffer,
     bias: Buffer,
 ): Promise<ComputePass[]> {
-    const statsCode = await fetchKernel('moments.glsl');
-    const affineCode = await fetchKernel('affine.glsl');
+    const statsCode = await fetchKernel('moments.wgsl');
+    const affineCode = await fetchKernel('affine.wgsl');
 
     const inBuffer = input.readOnly();
 

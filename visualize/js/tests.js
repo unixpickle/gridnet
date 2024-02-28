@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 function testWebGPUPatchEmbed() {
     return __awaiter(this, void 0, void 0, function* () {
-        const patchEmbCode = yield fetchKernel('patch_embed.glsl');
+        const patchEmbCode = yield fetchKernel('patch_embed.wgsl');
         const weight = Tensor.zeros(new Shape(8, 3, 4, 4));
         const bias = Tensor.zeros(new Shape(8));
         const input = Tensor.zeros(new Shape(3, 256, 256));
@@ -82,7 +82,7 @@ function testWebGPUGridnet() {
         const expectedOutput = cpuLayer.forward(input);
         const output = input.clone();
         const sequence = new KernelSequence([
-            new ComputePass(yield fetchKernel('gridnet.glsl'), 'gridnet8x8x8', [
+            new ComputePass(yield fetchKernel('gridnet.wgsl'), 'gridnet8x8x8', [
                 new Buffer(new Uint32Array([iters])),
                 new Buffer(new Uint32Array([64])),
                 new Buffer(input.data),

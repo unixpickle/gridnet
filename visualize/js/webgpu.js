@@ -182,13 +182,13 @@ class KernelSequence {
 }
 function fetchKernel(name) {
     return __awaiter(this, void 0, void 0, function* () {
-        return yield (yield fetch(`/glsl/${name}`)).text();
+        return yield (yield fetch(`/wgsl/${name}`)).text();
     });
 }
 function webgpuLayerNorm(input, output, weight, bias) {
     return __awaiter(this, void 0, void 0, function* () {
-        const statsCode = yield fetchKernel('moments.glsl');
-        const affineCode = yield fetchKernel('affine.glsl');
+        const statsCode = yield fetchKernel('moments.wgsl');
+        const affineCode = yield fetchKernel('affine.wgsl');
         const inBuffer = input.readOnly();
         let moment1 = new Buffer(new Float32Array(1024), null, true);
         let moment2 = new Buffer(new Float32Array(1024), null, true);
