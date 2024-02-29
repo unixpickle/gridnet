@@ -54,6 +54,28 @@ class ReadOnlyBuffer {
         return this._buffer;
     }
 }
+class ShaderModuleCache {
+    constructor() {
+        this.items = [];
+    }
+    createOrReuse(device, code) {
+        for (let i = 0; i < this.items.length; i++) {
+            if (this.items[i].device == device && this.items[i].code == code) {
+                return this.items[i].module;
+            }
+        }
+        const module = device.createShaderModule({
+            code: code,
+        });
+        this.items.push({
+            code: code,
+            device: device,
+            module: module,
+        });
+        return module;
+    }
+}
+ShaderModuleCache.Global = new ShaderModuleCache();
 class ComputePass {
     constructor(code, entrypoint, bindings, gridSize) {
         this.code = code;
@@ -62,28 +84,28 @@ class ComputePass {
         this.gridSize = gridSize;
     }
     encode(device, encoder) {
-        const bindGroupLayout = device.createBindGroupLayout(this.bindGroupLayout());
-        const bindGroup = device.createBindGroup({
-            layout: bindGroupLayout,
-            entries: this.bindGroup(),
+        return __awaiter(this, void 0, void 0, function* () {
+            const bindGroupLayout = device.createBindGroupLayout(this.bindGroupLayout());
+            const bindGroup = device.createBindGroup({
+                layout: bindGroupLayout,
+                entries: this.bindGroup(),
+            });
+            const shaderModule = ShaderModuleCache.Global.createOrReuse(device, this.code);
+            const pipeline = yield device.createComputePipelineAsync({
+                layout: device.createPipelineLayout({
+                    bindGroupLayouts: [bindGroupLayout]
+                }),
+                compute: {
+                    module: shaderModule,
+                    entryPoint: this.entrypoint,
+                },
+            });
+            const passEncoder = encoder.beginComputePass();
+            passEncoder.setPipeline(pipeline);
+            passEncoder.setBindGroup(0, bindGroup);
+            passEncoder.dispatchWorkgroups(this.gridSize[0], this.gridSize[1], this.gridSize[2]);
+            passEncoder.end();
         });
-        const shaderModule = device.createShaderModule({
-            code: this.code,
-        });
-        const pipeline = device.createComputePipeline({
-            layout: device.createPipelineLayout({
-                bindGroupLayouts: [bindGroupLayout]
-            }),
-            compute: {
-                module: shaderModule,
-                entryPoint: this.entrypoint,
-            },
-        });
-        const passEncoder = encoder.beginComputePass();
-        passEncoder.setPipeline(pipeline);
-        passEncoder.setBindGroup(0, bindGroup);
-        passEncoder.dispatchWorkgroups(this.gridSize[0], this.gridSize[1], this.gridSize[2]);
-        passEncoder.end();
     }
     bindGroupLayout() {
         return {
@@ -125,9 +147,9 @@ class KernelSequence {
             device.pushErrorScope('out-of-memory');
             this.createDeviceBuffers(device);
             const encoder = device.createCommandEncoder();
-            this.passes.forEach((pass) => {
-                pass.encode(device, encoder);
-            });
+            for (let i = 0; i < this.passes.length; i++) {
+                yield this.passes[i].encode(device, encoder);
+            }
             this.encodeResultCopies(device, encoder);
             const gpuCommands = encoder.finish();
             device.queue.submit([gpuCommands]);

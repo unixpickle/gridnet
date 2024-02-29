@@ -65,6 +65,34 @@ class ReadOnlyBuffer {
     }
 }
 
+interface ShaderModuleCacheItem {
+    code: string;
+    device: GPUDevice;
+    module: GPUShaderModule;
+}
+
+class ShaderModuleCache {
+    private items: ShaderModuleCacheItem[] = [];
+    static Global = new ShaderModuleCache();
+
+    createOrReuse(device: GPUDevice, code: string): GPUShaderModule {
+        for (let i = 0; i < this.items.length; i++) {
+            if (this.items[i].device == device && this.items[i].code == code) {
+                return this.items[i].module;
+            }
+        }
+        const module = device.createShaderModule({
+            code: code,
+        });
+        this.items.push({
+            code: code,
+            device: device,
+            module: module,
+        });
+        return module;
+    }
+}
+
 class ComputePass {
     constructor(
         public code: string,
@@ -74,17 +102,15 @@ class ComputePass {
     ) {
     }
 
-    encode(device: GPUDevice, encoder: GPUCommandEncoder) {
+    async encode(device: GPUDevice, encoder: GPUCommandEncoder) {
         const bindGroupLayout = device.createBindGroupLayout(this.bindGroupLayout());
         const bindGroup = device.createBindGroup({
             layout: bindGroupLayout,
             entries: this.bindGroup(),
         });
-        const shaderModule = device.createShaderModule({
-            code: this.code,
-        });
+        const shaderModule = ShaderModuleCache.Global.createOrReuse(device, this.code);
 
-        const pipeline = device.createComputePipeline({
+        const pipeline = await device.createComputePipelineAsync({
             layout: device.createPipelineLayout({
                 bindGroupLayouts: [bindGroupLayout]
             }),
@@ -145,9 +171,9 @@ class KernelSequence {
         this.createDeviceBuffers(device)
 
         const encoder = device.createCommandEncoder();
-        this.passes.forEach((pass) => {
-            pass.encode(device, encoder);
-        });
+        for (let i = 0; i < this.passes.length; i++) {
+            await this.passes[i].encode(device, encoder);
+        }
         this.encodeResultCopies(device, encoder);
 
         const gpuCommands = encoder.finish();
