@@ -99,6 +99,7 @@ class ComputePass {
         public entrypoint: string,
         public bindings: BindingArg[],
         public gridSize: [number] | [number, number] | [number, number, number],
+        public constants: { [_: string]: GPUPipelineConstantValue } = {},
     ) {
     }
 
@@ -117,6 +118,7 @@ class ComputePass {
             compute: {
                 module: shaderModule,
                 entryPoint: this.entrypoint,
+                constants: this.constants,
             },
         });
 

@@ -77,11 +77,12 @@ class ShaderModuleCache {
 }
 ShaderModuleCache.Global = new ShaderModuleCache();
 class ComputePass {
-    constructor(code, entrypoint, bindings, gridSize) {
+    constructor(code, entrypoint, bindings, gridSize, constants = {}) {
         this.code = code;
         this.entrypoint = entrypoint;
         this.bindings = bindings;
         this.gridSize = gridSize;
+        this.constants = constants;
     }
     encode(device, encoder) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -98,6 +99,7 @@ class ComputePass {
                 compute: {
                     module: shaderModule,
                     entryPoint: this.entrypoint,
+                    constants: this.constants,
                 },
             });
             const passEncoder = encoder.beginComputePass();
