@@ -40,6 +40,9 @@ class Buffer {
     readOnly() {
         return new ReadOnlyBuffer(this);
     }
+    size() {
+        return this.input.length;
+    }
 }
 class ReadOnlyBuffer {
     constructor(_buffer) {
@@ -52,6 +55,12 @@ class ReadOnlyBuffer {
     }
     buffer() {
         return this._buffer;
+    }
+    readOnly() {
+        return this;
+    }
+    size() {
+        return this._buffer.size();
     }
 }
 class ShaderModuleCache {
@@ -219,7 +228,7 @@ function webgpuLayerNorm(input, output, weight, bias) {
         let moment1Tmp = new Buffer(new Float32Array(1024), null, true);
         let moment2Tmp = new Buffer(new Float32Array(1024), null, true);
         const unused = new Buffer(new Float32Array(1), null, true);
-        const inputSize = input.input.length;
+        const inputSize = input.size();
         const sizeBuffer = new Buffer(new Uint32Array([inputSize]));
         const isFirstTrue = new Buffer(new Uint32Array([1]));
         const isFirstFalse = new Buffer(new Uint32Array([0]));

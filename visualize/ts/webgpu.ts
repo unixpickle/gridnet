@@ -4,6 +4,8 @@ type CPUArrayConstructor = Float32ArrayConstructor | Uint32ArrayConstructor;
 interface BindingArg {
     layout(): GPUBufferBindingLayout;
     buffer(): Buffer;
+    readOnly(): BindingArg;
+    size(): number;
 }
 
 class Buffer {
@@ -48,6 +50,10 @@ class Buffer {
     readOnly(): ReadOnlyBuffer {
         return new ReadOnlyBuffer(this);
     }
+
+    size(): number {
+        return this.input.length;
+    }
 }
 
 class ReadOnlyBuffer {
@@ -62,6 +68,14 @@ class ReadOnlyBuffer {
 
     buffer(): Buffer {
         return this._buffer;
+    }
+
+    readOnly(): BindingArg {
+        return this;
+    }
+
+    size(): number {
+        return this._buffer.size();
     }
 }
 
@@ -244,10 +258,10 @@ async function fetchKernel(name: string): Promise<string> {
 }
 
 async function webgpuLayerNorm(
-    input: Buffer,
-    output: Buffer,
-    weight: Buffer,
-    bias: Buffer,
+    input: BindingArg,
+    output: BindingArg,
+    weight: BindingArg,
+    bias: BindingArg,
 ): Promise<ComputePass[]> {
     const statsCode = await fetchKernel('moments.wgsl');
     const affineCode = await fetchKernel('affine.wgsl');
@@ -260,7 +274,7 @@ async function webgpuLayerNorm(
     let moment2Tmp = new Buffer(new Float32Array(1024), null, true);
     const unused = new Buffer(new Float32Array(1), null, true);
 
-    const inputSize = input.input.length;
+    const inputSize = input.size();
     const sizeBuffer = new Buffer(new Uint32Array([inputSize]));
 
     const isFirstTrue = new Buffer(new Uint32Array([1]));
