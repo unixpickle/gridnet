@@ -83,14 +83,12 @@ function testWebGPUGridnet() {
         const output = input.clone();
         const sequence = new KernelSequence([
             new ComputePass(yield fetchKernel('gridnet.wgsl'), 'gridnet8x8x8', [
-                new Buffer(new Uint32Array([iters])),
-                new Buffer(new Uint32Array([64])),
                 new Buffer(input.data),
                 new Buffer(output.data, output.data),
                 new Buffer(weight.data),
                 new Buffer(bias.data),
                 new Buffer(scale.data),
-            ], [8 * 8 * 8])
+            ], [8 * 8 * 8], { iterations: iters, gridSize: 64 })
         ]);
         yield sequence.execute();
         let maxError = 0.0;

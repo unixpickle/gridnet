@@ -1,18 +1,18 @@
-@group(0) @binding(0) var<storage, read> iterations: u32;
-@group(0) @binding(1) var<storage, read> gridSize: u32;
+override iterations: u32;
+override gridSize: u32;
 
 // [grid x grid x grid]
-@group(0) @binding(2) var<storage, read> activationsIn: array<f32>;
-@group(0) @binding(3) var<storage, read_write> activationsOut: array<f32>;
+@group(0) @binding(0) var<storage, read> activationsIn: array<f32>;
+@group(0) @binding(1) var<storage, read_write> activationsOut: array<f32>;
 
 // [27 x grid x grid x grid]
-@group(0) @binding(4) var<storage, read> weight: array<f32>;
+@group(0) @binding(2) var<storage, read> weight: array<f32>;
 
 // [grid x grid x grid]
-@group(0) @binding(5) var<storage, read> bias: array<f32>;
+@group(0) @binding(3) var<storage, read> bias: array<f32>;
 
 // [grid x grid x grid]
-@group(0) @binding(6) var<storage, read> scale: array<f32>;
+@group(0) @binding(4) var<storage, read> scale: array<f32>;
 
 // Stores the cube of intermediate activations.
 var<workgroup> sharedActivations: array<f32, (8 + 2) * (8 + 2) * (8 + 2)>;

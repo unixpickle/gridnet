@@ -279,4 +279,49 @@ function webgpuLayerNorm(input, output, weight, bias) {
         return passes;
     });
 }
+function imagenetClassifier(image, gridData, patchWeight, patchBias, patchChannels, weight, bias, scale, gridSize, innerIterations, outerIterations, normWeight, normBias, readoutNormWeight, readoutNormBias, readoutWeight, readoutBias, readoutChannels, output) {
+    return __awaiter(this, void 0, void 0, function* () {
+        assert(gridData.writable);
+        assert(patchChannels == 8);
+        assert(output.writable);
+        const tmpBuffer = new Buffer(gridData.input.slice(), null, true);
+        let iterations = [];
+        const gridnetCode = yield fetchKernel('gridnet.wgsl');
+        for (let i = 0; i < outerIterations; i++) {
+            iterations = [
+                ...iterations,
+                new ComputePass(gridnetCode, 'gridnet8x8x8', [
+                    gridData.readOnly(),
+                    tmpBuffer,
+                    weight.readOnly(),
+                    bias.readOnly(),
+                    scale.readOnly(),
+                ], [(gridSize * gridSize * gridSize) / (8 * 8 * 8)], { iterations: innerIterations, gridSize: gridSize }),
+                ...yield webgpuLayerNorm(tmpBuffer.readOnly(), gridData, normWeight.readOnly(), normBias.readOnly()),
+            ];
+        }
+        const normInput = new Buffer(new Float32Array(64 * 64 * readoutChannels), null, true);
+        const normOutput = new Buffer(new Float32Array(64 * 64 * readoutChannels), null, true);
+        return [
+            new ComputePass(yield fetchKernel('patch_embed.wgsl'), 'patchEmbedStandard4x4', [
+                image.readOnly(),
+                gridData,
+                patchWeight.readOnly(),
+                patchBias.readOnly(),
+            ], [64]),
+            ...iterations,
+            new ComputePass(yield fetchKernel('slice_output.wgsl'), 'sliceOutput', [
+                gridData.readOnly(),
+                normInput,
+            ], [Math.ceil((64 * 64 * readoutChannels) / 256)], { gridSize: 64, outChannels: readoutChannels }),
+            ...yield webgpuLayerNorm(normInput.readOnly(), normOutput, readoutNormWeight.readOnly(), readoutNormBias.readOnly()),
+            new ComputePass(yield fetchKernel('unembed.wgsl'), 'unembed', [
+                normOutput.readOnly(),
+                readoutWeight.readOnly(),
+                readoutBias.readOnly(),
+                output,
+            ], [Math.ceil(1000 / 8)], { inSize: 64 * 64 * readoutChannels, outSize: 1000 }),
+        ];
+    });
+}
 //# sourceMappingURL=webgpu.js.map
