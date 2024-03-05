@@ -253,8 +253,15 @@ class KernelSequence {
     }
 }
 
+const KERNEL_CACHE: Map<string, string> = new Map();
+
 async function fetchKernel(name: string): Promise<string> {
-    return await (await fetch(`/wgsl/${name}`)).text();
+    if (KERNEL_CACHE.has(name)) {
+        return KERNEL_CACHE.get(name);
+    }
+    const result = await (await fetch(`/wgsl/${name}`)).text();
+    KERNEL_CACHE.set(name, result);
+    return result;
 }
 
 async function webgpuLayerNorm(

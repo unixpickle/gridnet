@@ -213,9 +213,15 @@ class KernelSequence {
         return results;
     }
 }
+const KERNEL_CACHE = new Map();
 function fetchKernel(name) {
     return __awaiter(this, void 0, void 0, function* () {
-        return yield (yield fetch(`/wgsl/${name}`)).text();
+        if (KERNEL_CACHE.has(name)) {
+            return KERNEL_CACHE.get(name);
+        }
+        const result = yield (yield fetch(`/wgsl/${name}`)).text();
+        KERNEL_CACHE.set(name, result);
+        return result;
     });
 }
 function webgpuLayerNorm(input, output, weight, bias) {
