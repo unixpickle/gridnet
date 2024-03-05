@@ -268,11 +268,11 @@ abstract class Layer {
 }
 
 class PatchEmbed extends Layer {
-    private inChannels: number;
-    private outChannels: number;
-    private kernelSize: number;
+    public inChannels: number;
+    public outChannels: number;
+    public kernelSize: number;
 
-    constructor(private weight: Tensor, private bias: Tensor) {
+    constructor(public weight: Tensor, public bias: Tensor) {
         super();
         assert(this.weight.shape.length == 4, this.weight.shape);
         assert(this.weight.shape[2] == this.weight.shape[3], this.weight.shape);
@@ -319,7 +319,7 @@ class PatchEmbed extends Layer {
 }
 
 class LayerNorm extends Layer {
-    constructor(private weight: Tensor, private bias: Tensor) {
+    constructor(public weight: Tensor, public bias: Tensor) {
         super();
         assert(bias.shape.equal(weight.shape));
     }
@@ -350,7 +350,7 @@ class Linear extends Layer {
     public inChannels: number;
     public outChannels: number;
 
-    constructor(private weight: Tensor, private bias: Tensor) {
+    constructor(public weight: Tensor, public bias: Tensor) {
         super();
         assert(weight.shape.length == 2);
         assert(bias.shape.length == 1);
@@ -376,9 +376,9 @@ class Linear extends Layer {
 }
 
 class Readout extends Layer {
-    private inChannels: number;
+    public inChannels: number;
 
-    constructor(private norm: LayerNorm, private proj: Linear) {
+    constructor(public norm: LayerNorm, public proj: Linear) {
         super();
         this.inChannels = proj.inChannels;
     }
@@ -405,11 +405,11 @@ class Gridnet extends Layer {
     private activation: (x: number) => number;
 
     constructor(
-        private weight: Tensor,
-        private bias: Tensor,
-        private residualScale: Tensor,
-        private innerIterations: number,
-        private blockSize: number,
+        public weight: Tensor,
+        public bias: Tensor,
+        public residualScale: Tensor,
+        public innerIterations: number,
+        public blockSize: number,
         activation: Activation,
     ) {
         super();
@@ -514,12 +514,12 @@ class Gridnet extends Layer {
 }
 
 class ImagenetClassifier extends Layer {
-    private config: ModelConfig;
-    private initIn: Tensor;
-    private network: Gridnet;
-    private norm: LayerNorm;
-    private patchEmb: PatchEmbed;
-    private readout: Readout;
+    public config: ModelConfig;
+    public initIn: Tensor;
+    public network: Gridnet;
+    public norm: LayerNorm;
+    public patchEmb: PatchEmbed;
+    public readout: Readout;
 
     constructor(ckpt: Checkpoint) {
         super();

@@ -46,6 +46,7 @@ class App {
         this.readyToClassify = false;
         this.imagePicker = new ImagePicker();
         this.classifyButton = document.getElementById('classify-button');
+        this.backend = document.getElementById('backend-select');
         this.predictions = new Predictions();
         loadModel().then((model) => {
             this.model = model;
@@ -59,11 +60,27 @@ class App {
                 this.classifyButton.style.display = 'block';
             }
         };
-        this.classifyButton.addEventListener('click', () => {
+        this.classifyButton.addEventListener('click', () => __awaiter(this, void 0, void 0, function* () {
             const img = this.imagePicker.getImage();
-            const pred = this.model.forward(img);
+            const t1 = new Date().getTime();
+            const pred = yield this.predict(img);
             const probs = softmax(pred);
+            const t2 = new Date().getTime();
+            console.log('predicted in', t2 - t1, 'ms');
             this.predictions.showPredictions(probs);
+        }));
+    }
+    predict(image) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (this.backend.value == 'CPU') {
+                return this.model.forward(image);
+            }
+            else {
+                const output = Tensor.zeros(new Shape(1000));
+                const sequence = new KernelSequence(yield webgpuImageNetClassifier(new Buffer(image.data), new Buffer(this.model.initIn.data, null, true), new Buffer(this.model.patchEmb.weight.data), new Buffer(this.model.patchEmb.bias.data), this.model.patchEmb.outChannels, new Buffer(this.model.network.weight.data), new Buffer(this.model.network.bias.data), new Buffer(this.model.network.residualScale.data), 64, this.model.network.innerIterations, this.model.config.outerIters, new Buffer(this.model.norm.weight.data), new Buffer(this.model.norm.bias.data), new Buffer(this.model.readout.norm.weight.data), new Buffer(this.model.readout.norm.bias.data), new Buffer(this.model.readout.proj.weight.data), new Buffer(this.model.readout.proj.bias.data), this.model.readout.inChannels / (64 * 64), new Buffer(output.data, output.data)));
+                yield sequence.execute();
+                return output;
+            }
         });
     }
 }

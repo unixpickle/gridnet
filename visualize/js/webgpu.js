@@ -279,7 +279,7 @@ function webgpuLayerNorm(input, output, weight, bias) {
         return passes;
     });
 }
-function imagenetClassifier(image, gridData, patchWeight, patchBias, patchChannels, weight, bias, scale, gridSize, innerIterations, outerIterations, normWeight, normBias, readoutNormWeight, readoutNormBias, readoutWeight, readoutBias, readoutChannels, output) {
+function webgpuImageNetClassifier(image, gridData, patchWeight, patchBias, patchChannels, weight, bias, scale, gridSize, innerIterations, outerIterations, normWeight, normBias, readoutNormWeight, readoutNormBias, readoutWeight, readoutBias, readoutChannels, output) {
     return __awaiter(this, void 0, void 0, function* () {
         assert(gridData.writable);
         assert(patchChannels == 8);

@@ -355,7 +355,7 @@ async function webgpuLayerNorm(
     return passes;
 }
 
-async function imagenetClassifier(
+async function webgpuImageNetClassifier(
     image: BindingArg,
     gridData: Buffer,
     // Patch emb
