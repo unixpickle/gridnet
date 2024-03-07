@@ -18,8 +18,11 @@ interface Checkpoint {
     config: ModelConfig;
 }
 
-async function loadCheckpoint(url: string): Promise<Checkpoint> {
-    const buf = await (await fetch(url)).arrayBuffer();
+async function loadCheckpointData(url: string): Promise<ArrayBuffer> {
+    return await (await fetch(url)).arrayBuffer();
+}
+
+function decodeCheckpoint(buf: ArrayBuffer): Checkpoint {
     const bytes = new Uint8Array(buf);
     const metadataSize = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
     const metadata = JSON.parse(

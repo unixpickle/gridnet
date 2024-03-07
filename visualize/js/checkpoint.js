@@ -7,23 +7,25 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-function loadCheckpoint(url) {
+function loadCheckpointData(url) {
     return __awaiter(this, void 0, void 0, function* () {
-        const buf = yield (yield fetch(url)).arrayBuffer();
-        const bytes = new Uint8Array(buf);
-        const metadataSize = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
-        const metadata = JSON.parse(String.fromCharCode.apply(null, bytes.slice(4, 4 + metadataSize)));
-        let allData = new Float32Array(flipToLittleEndian(buf.slice(4 + metadataSize)));
-        const params = new Map();
-        metadata["params"].forEach((info) => {
-            const [name, rawShape] = info;
-            const shape = new Shape(...rawShape);
-            const param = Tensor.from(shape, allData.slice(0, shape.numel()));
-            allData = allData.slice(shape.numel());
-            params.set(name, param);
-        });
-        return { params: params, config: metadata.config };
+        return yield (yield fetch(url)).arrayBuffer();
     });
+}
+function decodeCheckpoint(buf) {
+    const bytes = new Uint8Array(buf);
+    const metadataSize = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
+    const metadata = JSON.parse(String.fromCharCode.apply(null, bytes.slice(4, 4 + metadataSize)));
+    let allData = new Float32Array(flipToLittleEndian(buf.slice(4 + metadataSize)));
+    const params = new Map();
+    metadata["params"].forEach((info) => {
+        const [name, rawShape] = info;
+        const shape = new Shape(...rawShape);
+        const param = Tensor.from(shape, allData.slice(0, shape.numel()));
+        allData = allData.slice(shape.numel());
+        params.set(name, param);
+    });
+    return { params: params, config: metadata.config };
 }
 function flipToLittleEndian(input) {
     if (!isBigEndian()) {

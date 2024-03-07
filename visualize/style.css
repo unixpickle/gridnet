@@ -3,6 +3,26 @@ body {
     font-family: sans-serif;
 }
 
+#status-area {
+    text-align: center;
+    font-size: 20px;
+}
+
+#loader::before {
+    display: inline;
+    content: '⌛ ';
+}
+
+#error {
+    display: none;
+    color: rgb(156, 3, 3);
+}
+
+#error:before {
+    display: inline;
+    content: '❌ ';
+}
+
 #backend {
     display: block;
     margin: 20px auto;
@@ -29,6 +49,11 @@ body {
     margin: 20px auto;
     font-size: 20px;
     padding: 10px;
+}
+
+#classify-button.disabled {
+    pointer-events: none;
+    opacity: 0.5;
 }
 
 .predictions-row {

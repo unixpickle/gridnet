@@ -8,6 +8,7 @@
         <script type="text/javascript" src="js/checkpoint.js"></script>
         <script type="text/javascript" src="js/imagenet.js"></script>
         <script type="text/javascript" src="js/image_picker.js"></script>
+        <script type="text/javascript" src="js/worker_client.js"></script>
         <script type="text/javascript" src="js/app.js"></script>
         <script type="text/javascript" src="js/webgpu.js"></script>
         <script type="text/javascript" src="js/tests.js"></script>
@@ -23,6 +24,10 @@
         <button id="upload-button">Select image</button>
         <canvas id="image-resizer" width="600" height="600"></canvas>
         <button id="classify-button">Classify image</button>
+        <div id="status-area">
+            <div id="loader">Loading model...</div>
+            <div id="error"></div>
+        </div>
         <div id="predictions"></div>
     </body>
 </html>

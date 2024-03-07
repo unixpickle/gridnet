@@ -44,7 +44,10 @@ class App {
     private backend: HTMLSelectElement;
     private imagePicker: ImagePicker;
     private classifyButton: HTMLButtonElement;
+    private loader: HTMLElement;
+    private error: HTMLElement;
     private model: ImagenetClassifier;
+    private client: WorkerClient;
     private predictions: Predictions;
     private readyToClassify: boolean = false;
 
@@ -52,13 +55,20 @@ class App {
         this.imagePicker = new ImagePicker();
         this.classifyButton = document.getElementById('classify-button') as HTMLButtonElement;
         this.backend = document.getElementById('backend-select') as HTMLSelectElement;
+        this.loader = document.getElementById('loader');
+        this.error = document.getElementById('error');
         this.predictions = new Predictions();
-        loadModel().then((model) => {
+
+        loadModel().then(([client, model]) => {
+            this.client = client;
             this.model = model;
             if (this.readyToClassify) {
                 // We loaded the model _after_ an image was picked.
                 this.classifyButton.style.display = 'block';
             }
+            this.clearLoader();
+        }).catch((err) => {
+            this.showError(`Error loading model: ${err}`);
         });
 
         this.imagePicker.onReadyToClassify = () => {
@@ -70,20 +80,32 @@ class App {
         };
 
         this.classifyButton.addEventListener('click', async () => {
+            this.classifyButton.classList.add('disabled');
+            this.showLoader('Running classifier...');
             const img = this.imagePicker.getImage();
             const t1 = new Date().getTime();
-            const pred = await this.predict(img);
+            let pred;
+            try {
+                pred = await this.predict(img);
+            } catch (err) {
+                this.showError(`Failed to run classifier: ${err}`);
+                return;
+            } finally {
+                this.classifyButton.classList.remove('disabled');
+            }
             const probs = softmax(pred);
             const t2 = new Date().getTime();
             console.log('predicted in', t2 - t1, 'ms');
+            this.clearLoader();
             this.predictions.showPredictions(probs);
         });
     }
 
-    async predict(image: Tensor3): Promise<Tensor1> {
+    async predict(image: Tensor): Promise<Tensor> {
         if (this.backend.value == 'CPU') {
-            return this.model.forward(image);
+            return await this.client.predict(image);
         } else {
+            const grid = this.model.network.bias.shape[0];
             const output = Tensor.zeros(new Shape(1000));
             const sequence = new KernelSequence(await webgpuImageNetClassifier(
                 new Buffer(image.data),
@@ -94,7 +116,7 @@ class App {
                 new Buffer(this.model.network.weight.data),
                 new Buffer(this.model.network.bias.data),
                 new Buffer(this.model.network.residualScale.data),
-                64,
+                grid,
                 this.model.network.innerIterations,
                 this.model.config.outerIters,
                 new Buffer(this.model.norm.weight.data),
@@ -103,29 +125,39 @@ class App {
                 new Buffer(this.model.readout.norm.bias.data),
                 new Buffer(this.model.readout.proj.weight.data),
                 new Buffer(this.model.readout.proj.bias.data),
-                this.model.readout.inChannels / (64 * 64),
+                this.model.readout.inChannels / (grid * grid),
                 new Buffer(output.data, output.data),
             ));
             await sequence.execute();
             return output;
         }
     }
+
+    clearLoader() {
+        this.loader.style.display = 'none';
+        this.error.style.display = 'none';
+    }
+
+    showLoader(msg: string) {
+        this.error.style.display = 'none';
+        this.loader.style.display = 'block';
+        this.loader.textContent = msg;
+    }
+
+    showError(msg: string) {
+        this.error.style.display = 'inline-block';
+        this.error.textContent = msg;
+        this.loader.style.display = 'none';
+    }
 }
 
-async function loadModel(): Promise<ImagenetClassifier> {
-    const ckpt = await loadCheckpoint('/checkpoints/imagenet_64x64');
-    return new ImagenetClassifier(ckpt);
+async function loadModel(): Promise<[WorkerClient, ImagenetClassifier]> {
+    const data = await loadCheckpointData('/checkpoints/imagenet_64x64');
+    const client = new WorkerClient();
+    await client.putCheckpoint(data);
+    return [client, new ImagenetClassifier(decodeCheckpoint(data))];
 }
 
 window.addEventListener('load', () => {
-    // const button = document.createElement('button');
-    // button.onclick = () => {
-    //     loadModel().then(() => {
-    //         button.textContent = 'Done';
-    //     });
-    // };
-    // button.textContent = 'Run forward';
-    // document.body.appendChild(button);
-
     new App();
 });
