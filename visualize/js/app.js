@@ -11,13 +11,17 @@ class Predictions {
     constructor() {
         this.element = document.getElementById('predictions');
     }
-    showPredictions(probs) {
+    showPredictions(probs, duration) {
         const classes = [];
         for (let i = 0; i < probs.data.length; i++) {
             classes.push([probs.data[i], window.ImagenetClasses[i]]);
         }
         classes.sort((a, b) => b[0] - a[0]);
         this.element.innerHTML = '';
+        const durationIndicator = document.createElement('div');
+        durationIndicator.className = 'duration-indicator';
+        durationIndicator.textContent = `Ran in ${Math.round(duration).toString()} ms`;
+        this.element.appendChild(durationIndicator);
         classes.slice(0, 10).forEach((probAndCls) => {
             const name = document.createElement('label');
             name.textContent = probAndCls[1];
@@ -67,7 +71,7 @@ class App {
             }
         };
         this.classifyButton.addEventListener('click', () => __awaiter(this, void 0, void 0, function* () {
-            this.classifyButton.classList.add('disabled');
+            this.disableInputs();
             this.showLoader('Running classifier...');
             const img = this.imagePicker.getImage();
             const t1 = new Date().getTime();
@@ -80,13 +84,12 @@ class App {
                 return;
             }
             finally {
-                this.classifyButton.classList.remove('disabled');
+                this.enableInputs();
             }
             const probs = softmax(pred);
             const t2 = new Date().getTime();
-            console.log('predicted in', t2 - t1, 'ms');
             this.clearLoader();
-            this.predictions.showPredictions(probs);
+            this.predictions.showPredictions(probs, t2 - t1);
         }));
     }
     predict(image) {
@@ -102,6 +105,14 @@ class App {
                 return output;
             }
         });
+    }
+    disableInputs() {
+        this.classifyButton.classList.add('disabled');
+        this.imagePicker.setEnabled(false);
+    }
+    enableInputs() {
+        this.classifyButton.classList.remove('disabled');
+        this.imagePicker.setEnabled(true);
     }
     clearLoader() {
         this.loader.style.display = 'none';

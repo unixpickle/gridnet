@@ -6,6 +6,7 @@ body {
 #status-area {
     text-align: center;
     font-size: 20px;
+    margin-bottom: 20px;
 }
 
 #loader::before {
@@ -44,6 +45,10 @@ body {
     cursor: all-scroll;
 }
 
+#image-resizer.disabled {
+    pointer-events: none;
+}
+
 #classify-button {
     display: none;
     margin: 20px auto;
@@ -51,9 +56,20 @@ body {
     padding: 10px;
 }
 
-#classify-button.disabled {
+#classify-button.disabled,
+#upload-button.disabled {
     pointer-events: none;
     opacity: 0.5;
+}
+
+.duration-indicator {
+    display: block;
+    text-align: center;
+}
+
+.duration-indicator::before {
+    display: inline;
+    content: '⏱️ ';
 }
 
 .predictions-row {

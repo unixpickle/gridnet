@@ -30,6 +30,16 @@ class ImagePicker {
         this.setupTouchEvents();
     }
 
+    setEnabled(enabled: boolean) {
+        if (enabled) {
+            this.canvas.classList.remove('disabled');
+            this.uploadButton.classList.remove('disabled');
+        } else {
+            this.canvas.classList.add('disabled');
+            this.uploadButton.classList.add('disabled');
+        }
+    }
+
     public getImage(): Tensor3 {
         const dst = document.createElement('canvas');
         dst.width = ImagePicker.OUTPUT_IMAGE_SIZE;
@@ -40,8 +50,8 @@ class ImagePicker {
         const ctx = dst.getContext('2d');
 
         ctx.clearRect(0, 0, dst.width, dst.height);
-        ctx.translate(-this.offset[0], -this.offset[1]);
         ctx.scale(imgScale, imgScale);
+        ctx.translate(-this.offset[0], -this.offset[1]);
         ctx.drawImage(this.image, 0, 0);
 
         const data = ctx.getImageData(0, 0, dst.width, dst.height);
@@ -87,6 +97,7 @@ class ImagePicker {
         } else {
             this.offset = [0, (img.height - img.width) / 2];
         }
+        this.scale = 1.0;
         this.draw();
     }
 
