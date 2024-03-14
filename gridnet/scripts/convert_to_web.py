@@ -20,7 +20,10 @@ def main():
     parser.add_argument("--inner_iters", type=int, default=8)
     parser.add_argument("--outer_iters", type=int, default=12)
     parser.add_argument("--outer_residual", action="store_true")
+    parser.add_argument("--precision", type=int, default=32)
     args = parser.parse_args()
+
+    assert args.precision in {16, 32}
 
     device = torch.device("cpu")
 
@@ -29,6 +32,7 @@ def main():
 
     metadata = dict(
         params=[(k, v.shape) for k, v in state.items()],
+        precision=args.precision,
         config={
             "activation": args.activation,
             "innerIters": args.inner_iters,
@@ -43,7 +47,28 @@ def main():
         f.write(metadata_bytes)
         for v in state.values():
             data = v.reshape(-1).float().tolist()
-            f.write(struct.pack(f"<{len(data)}f", *data))
+            float_data = struct.pack(f"<{len(data)}f", *data)
+            if args.precision == 32:
+                f.write(float_data)
+            else:
+                # Convert float32 to float16
+                words = struct.unpack(f"<{len(data)}I", float_data)
+                # float32: sign(1) + exp(8) + frac(23)
+                # float16: sign(1) + exp(5) + frac(10)
+                signs = [(x >> 31) & 1 for x in words]
+                exps = [((x >> 23) & 0b11111111) - 127 for x in words]
+                fracs = [x & ((1 << 23) - 1) for x in words]
+                for i, x in enumerate(exps.copy()):
+                    if x < -15:
+                        exps[i] = -15
+                    elif x > 15:
+                        assert f"number too large {data[i]}"
+                float16s = [
+                    (sign << 15) | (((exp + 15) & 0b11111) << 10) | (frac >> 13)
+                    for sign, exp, frac in zip(signs, exps, fracs)
+                ]
+                data = struct.pack(f"<{len(data)}H", *float16s)
+                f.write(data)
 
 
 if __name__ == "__main__":

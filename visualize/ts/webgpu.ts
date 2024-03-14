@@ -259,7 +259,7 @@ async function fetchKernel(name: string): Promise<string> {
     if (KERNEL_CACHE.has(name)) {
         return KERNEL_CACHE.get(name);
     }
-    const result = await (await fetch(`/wgsl/${name}`)).text();
+    const result = await (await fetch(`wgsl/${name}`)).text();
     KERNEL_CACHE.set(name, result);
     return result;
 }

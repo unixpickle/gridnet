@@ -219,7 +219,7 @@ function fetchKernel(name) {
         if (KERNEL_CACHE.has(name)) {
             return KERNEL_CACHE.get(name);
         }
-        const result = yield (yield fetch(`/wgsl/${name}`)).text();
+        const result = yield (yield fetch(`wgsl/${name}`)).text();
         KERNEL_CACHE.set(name, result);
         return result;
     });

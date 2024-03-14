@@ -167,7 +167,7 @@ class App {
 }
 
 async function loadModel(): Promise<[WorkerClient, ImagenetClassifier]> {
-    const data = await loadCheckpointData('/checkpoints/imagenet_64x64_fp16');
+    const data = await loadCheckpointData('checkpoints/imagenet_64x64_fp16');
     const client = new WorkerClient();
     await client.putCheckpoint(data);
     return [client, new ImagenetClassifier(decodeCheckpoint(data))];

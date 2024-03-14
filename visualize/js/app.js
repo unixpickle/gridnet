@@ -131,7 +131,7 @@ class App {
 }
 function loadModel() {
     return __awaiter(this, void 0, void 0, function* () {
-        const data = yield loadCheckpointData('/checkpoints/imagenet_64x64_fp16');
+        const data = yield loadCheckpointData('checkpoints/imagenet_64x64_fp16');
         const client = new WorkerClient();
         yield client.putCheckpoint(data);
         return [client, new ImagenetClassifier(decodeCheckpoint(data))];
