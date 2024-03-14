@@ -36,6 +36,7 @@ abstract class Tensor {
     }
 
     static from(shape: Shape, data: Float32Array): Tensor {
+        assert(shape.numel() == data.length);
         if (shape.length === 1) {
             return new Tensor1(shape, data);
         } else if (shape.length === 2) {

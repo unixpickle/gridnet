@@ -34,6 +34,7 @@ class Tensor {
         this.data = data;
     }
     static from(shape, data) {
+        assert(shape.numel() == data.length);
         if (shape.length === 1) {
             return new Tensor1(shape, data);
         }
