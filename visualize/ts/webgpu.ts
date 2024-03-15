@@ -167,12 +167,16 @@ class ComputePass {
     }
 }
 
+let DefaultDevice: GPUDevice = null;
+
 class KernelSequence {
     constructor(public passes: ComputePass[]) {
     }
 
     async execute(device: GPUDevice = null) {
+        let createdDevice = false;
         if (device == null) {
+            createdDevice = true;
             const adapter = await navigator.gpu.requestAdapter();
             if (!adapter) {
                 throw new Error('failed to get WebGPU adapter');
@@ -184,7 +188,7 @@ class KernelSequence {
         device.pushErrorScope('internal');
         device.pushErrorScope('out-of-memory');
 
-        this.createDeviceBuffers(device)
+        this.createDeviceBuffers(device);
 
         const encoder = device.createCommandEncoder();
         for (let i = 0; i < this.passes.length; i++) {
@@ -203,6 +207,12 @@ class KernelSequence {
         }
 
         await this.copyResults();
+        this.destroyBuffers();
+        if (createdDevice) {
+            // This seems to be necessary to prevent a memory leak
+            // in Chrome on Linux.
+            device.destroy();
+        }
     }
 
     private createDeviceBuffers(device: GPUDevice) {
@@ -238,6 +248,19 @@ class KernelSequence {
             buf.output.set(new ctr(arrayBuffer));
             buf.resultBuffer.unmap();
         }
+    }
+
+    private destroyBuffers() {
+        this.buffers().forEach((b) => {
+            if (b.deviceBuffer != null) {
+                b.deviceBuffer.destroy();
+            }
+            if (b.resultBuffer != null) {
+                b.resultBuffer.destroy();
+            }
+            b.deviceBuffer = null;
+            b.resultBuffer = null;
+        });
     }
 
     private buffers(): Buffer[] {

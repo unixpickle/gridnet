@@ -140,13 +140,16 @@ class ComputePass {
         });
     }
 }
+let DefaultDevice = null;
 class KernelSequence {
     constructor(passes) {
         this.passes = passes;
     }
     execute(device = null) {
         return __awaiter(this, void 0, void 0, function* () {
+            let createdDevice = false;
             if (device == null) {
+                createdDevice = true;
                 const adapter = yield navigator.gpu.requestAdapter();
                 if (!adapter) {
                     throw new Error('failed to get WebGPU adapter');
@@ -171,6 +174,10 @@ class KernelSequence {
                 }
             }
             yield this.copyResults();
+            this.destroyBuffers();
+            if (createdDevice) {
+                device.destroy();
+            }
         });
     }
     createDeviceBuffers(device) {
@@ -199,6 +206,18 @@ class KernelSequence {
                 buf.output.set(new ctr(arrayBuffer));
                 buf.resultBuffer.unmap();
             }
+        });
+    }
+    destroyBuffers() {
+        this.buffers().forEach((b) => {
+            if (b.deviceBuffer != null) {
+                b.deviceBuffer.destroy();
+            }
+            if (b.resultBuffer != null) {
+                b.resultBuffer.destroy();
+            }
+            b.deviceBuffer = null;
+            b.resultBuffer = null;
         });
     }
     buffers() {
