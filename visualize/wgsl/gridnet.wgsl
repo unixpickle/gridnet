@@ -1,21 +1,21 @@
-override iterations: u32;
-override gridSize: u32;
+@group(0) @binding(0) var<storage, read> iterations: u32;
+@group(0) @binding(1) var<storage, read> gridSize: u32;
 
 // [grid x grid x grid]
-@group(0) @binding(0) var<storage, read> activationsIn: array<f32>;
-@group(0) @binding(1) var<storage, read_write> activationsOut: array<f32>;
+@group(0) @binding(2) var<storage, read> activationsIn: array<f32>;
+@group(0) @binding(3) var<storage, read_write> activationsOut: array<f32>;
 
 // [27 x grid x grid x grid]
-@group(0) @binding(2) var<storage, read> weight: array<f32>;
+@group(0) @binding(4) var<storage, read> weight: array<f32>;
 
 // [grid x grid x grid]
-@group(0) @binding(3) var<storage, read> bias: array<f32>;
+@group(0) @binding(5) var<storage, read> bias: array<f32>;
 
 // [grid x grid x grid]
-@group(0) @binding(4) var<storage, read> scale: array<f32>;
+@group(0) @binding(6) var<storage, read> scale: array<f32>;
 
-// Stores the cube of intermediate activations.
-var<workgroup> sharedActivations: array<f32, (8 + 2) * (8 + 2) * (8 + 2)>;
+// Stores the cube of intermediate activations. (8 + 2) ^ 3
+var<workgroup> sharedActivations: array<f32, 1000>;
 
 // We have 8x8x8 = 512 activations, but we can only use a block
 // size of 256, so we work on two cells at once.
@@ -24,13 +24,13 @@ fn gridnet8x8x8(
     @builtin(workgroup_id) ctaId: vec3u,
     @builtin(local_invocation_index) tid: u32,
 ) {
-    const blockSize = 8u;
+    let blockSize = 8u;
 
     let blockX = ctaId.x % (gridSize / blockSize);
     let blockY = (ctaId.x / (gridSize / blockSize)) % (gridSize / blockSize);
     let blockZ = (ctaId.x / (gridSize / blockSize)) / (gridSize / blockSize);
     let activationsSize = (blockSize + 2) * (blockSize + 2) * (blockSize + 2);
-    for (var i = 0u; i < activationsSize; i += 256) {
+    for (var i = 0u; i < activationsSize; i += 256u) {
         let offset = tid + i;
         let globalX = (offset % (blockSize + 2)) + blockX * blockSize;
         let globalY = (offset / (blockSize + 2)) % (blockSize + 2) + blockY * blockSize;
@@ -54,7 +54,7 @@ fn gridnet8x8x8(
     // This is a local of thread-local data, which may result
     // in a register spill on some GPUs. We may want to quantize
     // this in the future (e.g. to bf16) to save memory.
-    var localWeights: array<f32, 27*2> = array<f32, 27*2>();
+    var localWeights: array<f32, 54> = array<f32, 54>(); // 27 * 2
     var localBiases: array<f32, 2> = array<f32, 2>();
     var localScales: array<f32, 2> = array<f32, 2>();
 
@@ -77,14 +77,13 @@ fn gridnet8x8x8(
     let firstOffset = threadX + 1 + (blockSize + 2) * (
         threadY + 1 + (blockSize + 2) * (threadZ + 1)
     );
-    let paddedOffset: array<u32, 2> = array<u32, 2>(firstOffset, firstOffset + 1);
     for (var i = 0u; i < iterations; i++) {
         // Wait for activations to be available.
         workgroupBarrier();
 
         var output: array<f32, 2> = array<f32, 2>();
         for (var j = 0u; j < 2; j++) {
-            let localAct = sharedActivations[paddedOffset[j]];
+            let localAct = sharedActivations[firstOffset + j];
             var dot = localBiases[j];
             for (var a = 0u; a < 3; a++) {
                 for (var b = 0u; b < 3; b++) {
@@ -105,7 +104,7 @@ fn gridnet8x8x8(
         // still being computed.
         workgroupBarrier();
         for (var j = 0u; j < 2; j++) {
-            sharedActivations[paddedOffset[j]] = output[j];
+            sharedActivations[firstOffset + j] = output[j];
         }
     }
     workgroupBarrier();
@@ -116,7 +115,7 @@ fn gridnet8x8x8(
             blockX * blockSize + threadX + j + gridSize * (
                 (blockY * blockSize + threadY) + gridSize * (blockZ * blockSize + threadZ)
             )
-        ] = sharedActivations[paddedOffset[j]];
+        ] = sharedActivations[firstOffset + j];
     }
 }
 

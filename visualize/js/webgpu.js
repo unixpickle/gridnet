@@ -86,12 +86,11 @@ class ShaderModuleCache {
 }
 ShaderModuleCache.Global = new ShaderModuleCache();
 class ComputePass {
-    constructor(code, entrypoint, bindings, gridSize, constants = {}) {
+    constructor(code, entrypoint, bindings, gridSize) {
         this.code = code;
         this.entrypoint = entrypoint;
         this.bindings = bindings;
         this.gridSize = gridSize;
-        this.constants = constants;
     }
     encode(device, encoder) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -108,7 +107,6 @@ class ComputePass {
                 compute: {
                     module: shaderModule,
                     entryPoint: this.entrypoint,
-                    constants: this.constants,
                 },
             });
             const passEncoder = encoder.beginComputePass();
@@ -316,12 +314,14 @@ function webgpuImageNetClassifier(image, gridData, patchWeight, patchBias, patch
             iterations = [
                 ...iterations,
                 new ComputePass(gridnetCode, 'gridnet8x8x8', [
+                    new Buffer(new Uint32Array([innerIterations])),
+                    new Buffer(new Uint32Array([gridSize])),
                     gridData.readOnly(),
                     tmpBuffer,
                     weight.readOnly(),
                     bias.readOnly(),
                     scale.readOnly(),
-                ], [(gridSize * gridSize * gridSize) / (8 * 8 * 8)], { iterations: innerIterations, gridSize: gridSize }),
+                ], [(gridSize * gridSize * gridSize) / (8 * 8 * 8)]),
                 ...yield webgpuLayerNorm(tmpBuffer.readOnly(), gridData, normWeight.readOnly(), normBias.readOnly()),
             ];
         }
@@ -336,16 +336,20 @@ function webgpuImageNetClassifier(image, gridData, patchWeight, patchBias, patch
             ], [64]),
             ...iterations,
             new ComputePass(yield fetchKernel('slice_output.wgsl'), 'sliceOutput', [
+                new Buffer(new Uint32Array([64])),
+                new Buffer(new Uint32Array([readoutChannels])),
                 gridData.readOnly(),
                 normInput,
-            ], [Math.ceil((64 * 64 * readoutChannels) / 256)], { gridSize: 64, outChannels: readoutChannels }),
+            ], [Math.ceil((64 * 64 * readoutChannels) / 256)]),
             ...yield webgpuLayerNorm(normInput.readOnly(), normOutput, readoutNormWeight.readOnly(), readoutNormBias.readOnly()),
             new ComputePass(yield fetchKernel('unembed.wgsl'), 'unembed', [
+                new Buffer(new Uint32Array([64 * 64 * readoutChannels])),
+                new Buffer(new Uint32Array([1000])),
                 normOutput.readOnly(),
                 readoutWeight.readOnly(),
                 readoutBias.readOnly(),
                 output,
-            ], [Math.ceil(1000 / 8)], { inSize: 64 * 64 * readoutChannels, outSize: 1000 }),
+            ], [Math.ceil(1000 / 8)]),
         ];
     });
 }

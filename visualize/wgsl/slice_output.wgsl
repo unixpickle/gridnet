@@ -1,11 +1,11 @@
-override gridSize: u32;
-override outChannels: u32;
+@group(0) @binding(0) var<storage, read> gridSize: u32;
+@group(0) @binding(1) var<storage, read> outChannels: u32;
 
 // [gridSize x gridSize x gridSize]
-@group(0) @binding(0) var<storage, read> inputs: array<f32>;
+@group(0) @binding(2) var<storage, read> inputs: array<f32>;
 
 // [gridSize x outChannels]
-@group(0) @binding(1) var<storage, read_write> outputs: array<f32>;
+@group(0) @binding(3) var<storage, read_write> outputs: array<f32>;
 
 // Slice a grid like grid[:, :, -outChannels:].
 @compute @workgroup_size(256)

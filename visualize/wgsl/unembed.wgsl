@@ -1,17 +1,17 @@
-override inSize: u32;
-override outSize: u32;
+@group(0) @binding(0) var<storage, read> inSize: u32;
+@group(0) @binding(1) var<storage, read> outSize: u32;
 
 // [inSize]
-@group(0) @binding(0) var<storage, read> inputs: array<f32>;
+@group(0) @binding(2) var<storage, read> inputs: array<f32>;
 
 // [inSize x outSize]
-@group(0) @binding(1) var<storage, read> weight: array<f32>;
+@group(0) @binding(3) var<storage, read> weight: array<f32>;
 
 // [outSize]
-@group(0) @binding(2) var<storage, read> bias: array<f32>;
+@group(0) @binding(4) var<storage, read> bias: array<f32>;
 
 // [outSize]
-@group(0) @binding(3) var<storage, read_write> outputs: array<f32>;
+@group(0) @binding(5) var<storage, read_write> outputs: array<f32>;
 
 var<workgroup> localSums: array<f32, 256>;
 
@@ -27,7 +27,7 @@ fn unembed(
     if (tid % 32 == 0 && outputIndex < outSize) {
         localSum = bias[outputIndex];
     }
-    for (var i = 0u; i < inSize; i += 32) {
+    for (var i = 0u; i < inSize; i += 32u) {
         let localIndex = i + (tid % 32);
         var w: f32 = 0.0;
         var x: f32 = 0.0;
@@ -43,7 +43,7 @@ fn unembed(
     // Reduce across each group of 32 threads.
     localSums[tid] = localSum;
     workgroupBarrier();
-    for (var i = 1u; i < 32; i *= 2) {
+    for (var i = 1u; i < 32; i *= 2u) {
         let otherValue = localSums[tid ^ i];
         workgroupBarrier();
         localSum += otherValue;

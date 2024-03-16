@@ -95,6 +95,8 @@ async function testWebGPUGridnet() {
             await fetchKernel('gridnet.wgsl'),
             'gridnet8x8x8',
             [
+                new Buffer(new Uint32Array([iters])),
+                new Buffer(new Uint32Array([64])),
                 new Buffer(input.data),
                 new Buffer(output.data, output.data),
                 new Buffer(weight.data),
@@ -102,7 +104,6 @@ async function testWebGPUGridnet() {
                 new Buffer(scale.data),
             ],
             [8 * 8 * 8],
-            { iterations: iters, gridSize: 64 },
         )
     ]);
     await sequence.execute();
@@ -146,11 +147,12 @@ async function testWebGPUReadout() {
             await fetchKernel('slice_output.wgsl'),
             'sliceOutput',
             [
+                new Buffer(new Uint32Array([64])), // grid size
+                new Buffer(new Uint32Array([1])), // out channels
                 new Buffer(input.data),
                 normInput,
             ],
             [Math.ceil((64 * 64) / 256)],
-            { gridSize: 64, outChannels: 1 },
         ),
         ...await webgpuLayerNorm(
             normInput.readOnly(),
@@ -162,13 +164,14 @@ async function testWebGPUReadout() {
             await fetchKernel('unembed.wgsl'),
             'unembed',
             [
+                new Buffer(new Uint32Array([64 * 64])), // inSize
+                new Buffer(new Uint32Array([1000])), // outSize
                 normOutput.readOnly(),
                 new Buffer(weight.data),
                 new Buffer(bias.data),
                 new Buffer(output.data, output.data),
             ],
             [Math.ceil(1000 / 8)],
-            { inSize: 64 * 64, outSize: 1000 },
         ),
     ]);
     await sequence.execute();

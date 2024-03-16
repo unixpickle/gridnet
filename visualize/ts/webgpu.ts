@@ -113,7 +113,6 @@ class ComputePass {
         public entrypoint: string,
         public bindings: BindingArg[],
         public gridSize: [number] | [number, number] | [number, number, number],
-        public constants: { [_: string]: GPUPipelineConstantValue } = {},
     ) {
     }
 
@@ -132,7 +131,6 @@ class ComputePass {
             compute: {
                 module: shaderModule,
                 entryPoint: this.entrypoint,
-                constants: this.constants,
             },
         });
 
@@ -426,6 +424,8 @@ async function webgpuImageNetClassifier(
                 gridnetCode,
                 'gridnet8x8x8',
                 [
+                    new Buffer(new Uint32Array([innerIterations])),
+                    new Buffer(new Uint32Array([gridSize])),
                     gridData.readOnly(),
                     tmpBuffer,
                     weight.readOnly(),
@@ -433,7 +433,6 @@ async function webgpuImageNetClassifier(
                     scale.readOnly(),
                 ],
                 [(gridSize * gridSize * gridSize) / (8 * 8 * 8)],
-                { iterations: innerIterations, gridSize: gridSize },
             ),
             ...await webgpuLayerNorm(
                 tmpBuffer.readOnly(),
@@ -466,11 +465,12 @@ async function webgpuImageNetClassifier(
             await fetchKernel('slice_output.wgsl'),
             'sliceOutput',
             [
+                new Buffer(new Uint32Array([64])), // gridSize
+                new Buffer(new Uint32Array([readoutChannels])),
                 gridData.readOnly(),
                 normInput,
             ],
             [Math.ceil((64 * 64 * readoutChannels) / 256)],
-            { gridSize: 64, outChannels: readoutChannels },
         ),
         ...await webgpuLayerNorm(
             normInput.readOnly(),
@@ -482,13 +482,14 @@ async function webgpuImageNetClassifier(
             await fetchKernel('unembed.wgsl'),
             'unembed',
             [
+                new Buffer(new Uint32Array([64 * 64 * readoutChannels])), // inSize
+                new Buffer(new Uint32Array([1000])), // outSize
                 normOutput.readOnly(),
                 readoutWeight.readOnly(),
                 readoutBias.readOnly(),
                 output,
             ],
             [Math.ceil(1000 / 8)],
-            { inSize: 64 * 64 * readoutChannels, outSize: 1000 },
         ),
     ];
 }

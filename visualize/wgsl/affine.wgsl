@@ -24,7 +24,7 @@ fn affine(
 
     let mean = sum / f32(numInputs);
     let sqMean = sqSum / f32(numInputs);
-    let stddev = sqrt(max(0, sqMean - mean*mean + 1e-5));
+    let stddev = sqrt(sqMean - mean*mean + 1e-5);
 
     let output = ((localValue - mean) / stddev) * localWeight + localBias;
     if (globalIndex < numInputs) {

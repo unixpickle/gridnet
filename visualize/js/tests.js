@@ -83,12 +83,14 @@ function testWebGPUGridnet() {
         const output = input.clone();
         const sequence = new KernelSequence([
             new ComputePass(yield fetchKernel('gridnet.wgsl'), 'gridnet8x8x8', [
+                new Buffer(new Uint32Array([iters])),
+                new Buffer(new Uint32Array([64])),
                 new Buffer(input.data),
                 new Buffer(output.data, output.data),
                 new Buffer(weight.data),
                 new Buffer(bias.data),
                 new Buffer(scale.data),
-            ], [8 * 8 * 8], { iterations: iters, gridSize: 64 })
+            ], [8 * 8 * 8])
         ]);
         yield sequence.execute();
         let maxError = 0.0;
@@ -124,16 +126,20 @@ function testWebGPUReadout() {
         const normOutput = new Buffer(normOutputData, normOutputData);
         const sequence = new KernelSequence([
             new ComputePass(yield fetchKernel('slice_output.wgsl'), 'sliceOutput', [
+                new Buffer(new Uint32Array([64])),
+                new Buffer(new Uint32Array([1])),
                 new Buffer(input.data),
                 normInput,
-            ], [Math.ceil((64 * 64) / 256)], { gridSize: 64, outChannels: 1 }),
+            ], [Math.ceil((64 * 64) / 256)]),
             ...yield webgpuLayerNorm(normInput.readOnly(), normOutput, new Buffer(normWeight.data), new Buffer(normBias.data)),
             new ComputePass(yield fetchKernel('unembed.wgsl'), 'unembed', [
+                new Buffer(new Uint32Array([64 * 64])),
+                new Buffer(new Uint32Array([1000])),
                 normOutput.readOnly(),
                 new Buffer(weight.data),
                 new Buffer(bias.data),
                 new Buffer(output.data, output.data),
-            ], [Math.ceil(1000 / 8)], { inSize: 64 * 64, outSize: 1000 }),
+            ], [Math.ceil(1000 / 8)]),
         ]);
         yield sequence.execute();
         let maxError = 0.0;
