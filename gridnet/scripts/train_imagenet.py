@@ -26,6 +26,7 @@ class Model(nn.Module):
         emb_channels: int,
         grid_size: int,
         activation: ActivationFn,
+        separate_params: bool,
         device: torch.device,
     ):
         super().__init__()
@@ -37,16 +38,25 @@ class Model(nn.Module):
         self.init_in = nn.Parameter(
             torch.randn(grid_size, grid_size, grid_size, device=device)
         )
-        self.network = Gridnet(
-            (grid_size,) * 3,
-            inner_iters,
-            8,
-            init_scale=init_scale,
-            residual_scale=residual_scale,
-            device=device,
-            normalize=False,
-            activation=activation,
-        )
+
+        def make_model() -> Gridnet:
+            return Gridnet(
+                (grid_size,) * 3,
+                inner_iters,
+                8,
+                init_scale=init_scale,
+                residual_scale=residual_scale,
+                device=device,
+                normalize=False,
+                activation=activation,
+            )
+
+        self.separate_params = separate_params
+        if self.separate_params:
+            self.networks = nn.ModuleList([make_model() for _ in range(outer_iters)])
+        else:
+            self.network = make_model()
+
         self.patch_emb = nn.Conv2d(
             3,
             emb_channels,
@@ -63,12 +73,16 @@ class Model(nn.Module):
             0, 2, 3, 1
         )
         h = init_acts
-        for _ in range(self.outer_iters):
+        for i in range(self.outer_iters):
+            if self.separate_params:
+                net = self.networks[i]
+            else:
+                net = self.network
             if self.outer_residual:
                 norm_h = self.norm(h)
-                h = h + (self.network(norm_h) - norm_h)
+                h = h + (net(norm_h) - norm_h)
             else:
-                h = self.network(h)
+                h = net(h)
                 h = self.norm(h)
         return self.readout(h)
 
@@ -89,6 +103,7 @@ def main():
     parser.add_argument("--inner_iters", type=int, default=8)
     parser.add_argument("--outer_iters", type=int, default=12)
     parser.add_argument("--outer_residual", action="store_true")
+    parser.add_argument("--separate_params", action="store_true")
     args = parser.parse_args()
 
     print("Command-line args:", sys.argv[1:])
@@ -107,6 +122,7 @@ def main():
         emb_channels=args.emb_channels,
         grid_size=args.grid_size,
         activation=args.activation,
+        separate_params=args.separate_params,
         device=device,
     )
     opt = AdamW(
