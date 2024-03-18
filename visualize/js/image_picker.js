@@ -59,6 +59,14 @@ class ImagePicker {
                 img.addEventListener('load', () => {
                     this.handleImage(img);
                 });
+                img.addEventListener('error', (e) => {
+                    if (e.error) {
+                        alert(`Error loading image: ${e.error}`);
+                    }
+                    else {
+                        alert('Failed to load image.');
+                    }
+                });
                 img.src = reader.result;
             });
             reader.readAsDataURL(this.input.files[0]);
