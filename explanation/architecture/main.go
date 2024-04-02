@@ -22,8 +22,8 @@ const (
 	ActRadius       = 0.35
 	EdgeActRadius   = 0.25
 
-	ImageSize = 512
-	NumFrames = 64
+	ImageSize = 1024
+	NumFrames = 96
 )
 
 var (
@@ -41,20 +41,23 @@ func main() {
 	acts := AnimationGridActs()
 
 	frameIdx := 0
-	for t := 0.0; t < 2.0; t += 2.0 / NumFrames {
+	for t := 0.0; t < 2.0+1e-5; t += 2.0 / (NumFrames - 1) {
 		log.Printf("Working on frame %f", t)
 		spacing := math.Min(4.0, (0.5-math.Min(math.Abs(0.5-t), math.Abs(1.5-t)))*20)
 
 		actIndex := 0
-		if t >= 0.2 && t <= 0.8 {
+		if t <= 0.2 {
+		} else if t <= 0.8 {
 			frac := (t - 0.2) / 0.6
 			actIndex = int(math.Round(frac*InnerIters + 1))
-		} else if t > 0.8 && t < 1.2 {
+		} else if t < 1.0 {
 			actIndex = InnerIters + 1
-		} else if t >= 1.2 && t <= 1.8 {
+		} else if t < 1.2 {
+			actIndex = InnerIters + 2
+		} else if t <= 1.8 {
 			frac := (t - 1.2) / 0.6
-			actIndex = int(math.Round(frac*InnerIters+1)) + InnerIters
-		} else if t > 1.8 {
+			actIndex = int(math.Round(frac*(InnerIters-1) + InnerIters + 2))
+		} else {
 			actIndex = len(acts) - 1
 		}
 
@@ -106,12 +109,23 @@ func main() {
 
 func CreateGrid(acts GridActs, spacing float64) (model3d.Solid, toolbox3d.CoordColorFunc) {
 	block := BlockSolid()
+	innerBlock := model3d.IntersectedSolid{
+		block,
+		model3d.NewRect(model3d.Ones(-ActRadius), model3d.Ones(BlockSize-1+ActRadius)),
+	}
 
 	totalSize := block.Max().Sub(block.Min()).X*GridSize + (spacing-EdgeActRadius*2-1)*(GridSize-1)
 	increment := block.Max().Sub(block.Min()).X + spacing - EdgeActRadius*2 - 1
 
 	var solids model3d.JoinedSolid
-	var solidsAndColors []any
+
+	// We prioritize the inside of every block over the outside,
+	// so that when rendering cross-sections we always see the
+	// inside color and not the slow-to-update edge color when
+	// two blocks are overlapping.
+	var innerSolids model3d.JoinedSolid
+	var innerSolidsAndColors []any
+	var outerSolidsAndColors []any
 
 	for i := 0; i < GridSize; i++ {
 		z := -totalSize/2 + increment*float64(i)
@@ -120,20 +134,37 @@ func CreateGrid(acts GridActs, spacing float64) (model3d.Solid, toolbox3d.CoordC
 			for k := 0; k < GridSize; k++ {
 				x := -totalSize/2 + increment*float64(k)
 				delta := model3d.XYZ(x, y, z).Sub(block.Min())
-				solid := model3d.TranslateSolid(block, delta)
-				solids = append(solids, solid)
-				solidsAndColors = append(
-					solidsAndColors,
-					solid,
-					BlockColorFunc(acts[i][j][k]).Transform(
-						&model3d.Translate{Offset: delta},
-					),
+				outerSolid := model3d.TranslateSolid(block, delta)
+				innerSolid := model3d.TranslateSolid(innerBlock, delta)
+				solids = append(solids, outerSolid)
+				colorFunc := BlockColorFunc(acts[i][j][k]).Transform(
+					&model3d.Translate{Offset: delta},
+				)
+				innerSolids = append(innerSolids, innerSolid)
+				innerSolidsAndColors = append(
+					innerSolidsAndColors,
+					innerSolid,
+					colorFunc,
+				)
+				outerSolidsAndColors = append(
+					outerSolidsAndColors,
+					outerSolid,
+					colorFunc,
 				)
 			}
 		}
 	}
 
-	return solids.Optimize(), toolbox3d.JoinedSolidCoordColorFunc(nil, solidsAndColors...)
+	innerCf := toolbox3d.JoinedSolidCoordColorFunc(nil, innerSolidsAndColors...)
+	outerCf := toolbox3d.JoinedSolidCoordColorFunc(nil, outerSolidsAndColors...)
+
+	return solids.Optimize(), func(c model3d.Coord3D) render3d.Color {
+		if innerSolids.Contains(c) {
+			return innerCf(c)
+		} else {
+			return outerCf(c)
+		}
+	}
 }
 
 func BlockSolid() model3d.Solid {
@@ -214,10 +245,15 @@ func AnimationGridActs() []GridActs {
 	grids := make([]GridActs, InnerIters*2+2)
 	for i := range grids {
 		rg := FullRandomActs()
-		if i > InnerIters*2 {
+		if i == len(grids)-1 {
 			rg = grids[0]
 		}
-		if i != 0 && i != InnerIters+2 && i != len(grids)-1 {
+		if i == InnerIters+1 {
+			grids[i+1] = rg
+		} else if i == InnerIters+2 {
+			continue
+		}
+		if i != 0 {
 			rg = ReplaceGridInnerActs(grids[i-1], rg)
 		}
 		grids[i] = rg
@@ -270,9 +306,9 @@ func ReplaceGridInnerActs(b, replacement GridActs) GridActs {
 }
 
 func ReplaceBlockInnerActs(b, replacement BlockActs) BlockActs {
-	for i := 1; i < BlockSize; i++ {
-		for j := 1; j < BlockSize; j++ {
-			for k := 1; k < BlockSize; k++ {
+	for i := 1; i <= BlockSize; i++ {
+		for j := 1; j <= BlockSize; j++ {
+			for k := 1; k <= BlockSize; k++ {
 				b[i][j][k] = replacement[i][j][k]
 			}
 		}
